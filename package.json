@@ -1,0 +1,61 @@
+{
+  "name": "upinbox",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Open-source email intelligence layer. Connect Gmail, Outlook, or any IMAP server. BYOK AI. Zero-knowledge encryption. Self-hostable.",
+  "homepage": "https://upinbox.ai",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/UpGPT-ai/upinbox.git"
+  },
+  "license": "MIT",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:e2e": "playwright test",
+    "test:coverage": "vitest run --coverage",
+    "db:push": "supabase db push",
+    "db:reset": "supabase db reset",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@upgpt/email-classifier": "^0.1.0",
+    "@supabase/ssr": "^0.10.3",
+    "@supabase/supabase-js": "^2.45.0",
+    "@tiptap/react": "^2.6.0",
+    "@tiptap/starter-kit": "^2.6.0",
+    "@tanstack/react-query": "^5.56.0",
+    "cmdk": "^1.0.0",
+    "imapflow": "^1.0.162",
+    "jotai": "^2.9.0",
+    "next": "^15.0.0",
+    "nodemailer": "^6.9.0",
+    "nuqs": "^2.0.0",
+    "openpgp": "^5.11.0",
+    "react": "^18.3.0",
+    "react-dom": "^18.3.0",
+    "react-hotkeys-hook": "^4.5.0",
+    "virtua": "^0.33.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0",
+    "@types/nodemailer": "^6.4.0",
+    "@types/node": "^20.0.0",
+    "@types/react": "^18.3.0",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.0",
+    "typescript": "^5.5.0",
+    "vitest": "^2.0.0",
+    "tailwindcss": "^3.4.0",
+    "postcss": "^8.4.0",
+    "autoprefixer": "^10.4.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}
