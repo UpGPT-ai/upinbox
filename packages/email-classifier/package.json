@@ -2,12 +2,19 @@
   "name": "@upgpt/email-classifier",
   "version": "0.1.0",
   "description": "Heuristic email classifier — 70% accuracy, zero network, zero dependencies. Works in any JS environment.",
-  "keywords": ["email", "classifier", "heuristic", "inbox", "triage", "ai"],
+  "keywords": [
+    "email",
+    "classifier",
+    "heuristic",
+    "inbox",
+    "triage",
+    "ai"
+  ],
   "homepage": "https://upinbox.ai",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/UpGPT-ai/upinbox.git",
+    "url": "git+https://github.com/UpGPT-ai/upinbox.git",
     "directory": "packages/email-classifier"
   },
   "main": "./dist/index.js",
@@ -20,7 +27,9 @@
       "require": "./dist/index.js"
     }
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsup src/index.ts --format cjs,esm --dts --clean",
     "dev": "tsup src/index.ts --format cjs,esm --dts --watch",
