@@ -60,7 +60,7 @@ export const DEFAULT_SCREENER_RULES: Omit<ScreenerRule, 'id' | 'user_id' | 'crea
     name: 'Auto-archive promotions',
     priority: 110,
     enabled: true,
-    trigger: { type: 'category', category: 'PROMOTION' },
+    trigger: { type: 'category', category: 'PROMOTIONAL' },
     action: 'feed-promos',
   },
   {
@@ -78,18 +78,11 @@ export const DEFAULT_SCREENER_RULES: Omit<ScreenerRule, 'id' | 'user_id' | 'crea
     action: 'feed-social',
   },
   {
-    name: 'Auto-archive automated mail',
+    name: 'Trash spam',
     priority: 140,
     enabled: true,
-    trigger: { type: 'category', category: 'AUTOMATED' },
-    action: 'archive',
-  },
-  {
-    name: 'Archive expired threads',
-    priority: 150,
-    enabled: true,
-    trigger: { type: 'category', category: 'EXPIRED' },
-    action: 'archive',
+    trigger: { type: 'category', category: 'SPAM' },
+    action: 'trash',
   },
   {
     name: 'Archive bulk with unsubscribe link',

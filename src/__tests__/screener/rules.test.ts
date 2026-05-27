@@ -4,7 +4,17 @@
 
 import { describe, it, expect } from 'vitest';
 import { evaluateScreenerRules, DEFAULT_SCREENER_RULES } from '@/lib/screener/rules';
-import type { ScreenerRule, ScreenerContext } from '@/lib/screener/rules';
+import type { ScreenerRule } from '@/lib/screener/rules';
+
+// Inline context type matching the actual evaluateScreenerRules signature
+type ScreenerContext = {
+  category?: string;
+  confidence?: number;
+  fromEmail?: string;
+  fromDomain?: string;
+  subject?: string;
+  hasListUnsubscribe?: boolean;
+};
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -24,15 +34,17 @@ function makeRule(
   };
 }
 
-function makeContext(overrides: Partial<ScreenerContext> = {}): ScreenerContext {
+function makeContext(overrides: Partial<ScreenerContext & { senderEmail?: string; senderDomain?: string }> = {}): ScreenerContext {
+  // normalize alias fields
+  const { senderEmail, senderDomain, ...rest } = overrides;
   return {
     category: 'FYI',
     confidence: 0.8,
-    senderEmail: 'alice@example.com',
-    senderDomain: 'example.com',
+    fromEmail: senderEmail ?? 'alice@example.com',
+    fromDomain: senderDomain ?? 'example.com',
     subject: 'Hello world',
     hasListUnsubscribe: false,
-    ...overrides,
+    ...rest,
   };
 }
 
@@ -229,7 +241,7 @@ describe('default result', () => {
 describe('DEFAULT_SCREENER_RULES', () => {
   it('has rules for all major categories', () => {
     const triggers = DEFAULT_SCREENER_RULES.map((r) => {
-      if (r.trigger.type === 'category') return r.trigger.category;
+      if (r.trigger.type === 'category') return (r.trigger as { category: string }).category;
       return r.trigger.type;
     });
     expect(triggers).toContain('NEWSLETTER');
@@ -241,14 +253,14 @@ describe('DEFAULT_SCREENER_RULES', () => {
 
   it('SPAM → trash action', () => {
     const spamRule = DEFAULT_SCREENER_RULES.find(
-      (r) => r.trigger.type === 'category' && r.trigger.category === 'SPAM'
+      (r) => r.trigger.type === 'category' && (r.trigger as { category?: string }).category === 'SPAM'
     );
     expect(spamRule?.action).toBe('trash');
   });
 
   it('NEWSLETTER → feed-news action', () => {
     const newsRule = DEFAULT_SCREENER_RULES.find(
-      (r) => r.trigger.type === 'category' && r.trigger.category === 'NEWSLETTER'
+      (r) => r.trigger.type === 'category' && (r.trigger as { category?: string }).category === 'NEWSLETTER'
     );
     expect(newsRule?.action).toBe('feed-news');
   });
@@ -264,7 +276,7 @@ describe('DEFAULT_SCREENER_RULES', () => {
     const newsletterResult = evaluateScreenerRules(fullRules, makeContext({ category: 'NEWSLETTER' }));
     expect(newsletterResult.action).toBe('feed-news');
 
-    const spamResult = evaluateScreenerRules(fullRules, makeContext({ category: 'SPAM' }));
+    const spamResult = evaluateScreenerRules(fullRules, { ...makeContext(), category: 'SPAM' });
     expect(spamResult.action).toBe('trash');
 
     const receiptResult = evaluateScreenerRules(fullRules, makeContext({ category: 'RECEIPT' }));
