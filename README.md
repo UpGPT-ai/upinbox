@@ -49,15 +49,20 @@ UpInbox is an open-source email intelligence layer that connects to Gmail, Outlo
 
 ## Self-Host in 10 Minutes
 
+**One-liner** (auto-generates all secrets):
+```bash
+curl -fsSL https://upinbox.ai/install.sh | bash
+```
+
+**Manual:**
 ```bash
 git clone https://github.com/UpGPT-ai/upinbox.git
 cd upinbox
-cp .env.example .env
-# Edit .env — set PLATFORM_ENCRYPTION_KEY, POSTGRES_PASSWORD
+bash scripts/setup.sh --domain mail.example.com --email admin@example.com
 docker compose up -d
 ```
 
-Visit `http://localhost:3001` → connect your Gmail or Outlook → done.
+Visit `https://your-domain.com` → connect your Gmail or Outlook → done.
 
 The Docker image includes:
 - UpInbox web app (Next.js)
@@ -117,13 +122,43 @@ UpInbox exposes a full MCP server for AI assistants. Connect Claude Desktop or C
 }
 ```
 
-→ See [`UpGPT-ai/upinbox-mcp`](https://github.com/UpGPT-ai/upinbox-mcp) for 20+ tools.
+Create a token at **Settings → MCP Tokens**. Scopes: `read`, `write`, `delete`.
+
+The MCP server is included in this repo at [`src/app/api/upinbox/mcp/route.ts`](src/app/api/upinbox/mcp/route.ts). 12 tools: `email/list`, `email/get`, `email/send`, `email/reply`, `email/forward`, `email/trash`, `email/move`, `email/search`, `mailbox/list`, `thread/get`, `draft/create`, `screener/rules`.
+
+---
+
+## Chrome Extension
+
+The `extension/` directory contains a Chrome Extension (Manifest V3) that injects AI classification badges into Gmail.
+
+```
+extension/
+├── manifest.json       # MV3, host_permissions: mail.google.com
+├── src/
+│   ├── background.ts   # Service worker — 4-path classification router
+│   ├── content.ts      # Gmail DOM observer — injects badges into thread rows
+│   ├── popup.tsx       # React popup — provider picker, API key (sessionStorage only)
+│   ├── classifier.ts   # 4-path router: heuristic → UpLink → BYOK → Intelligence API
+│   ├── storage.ts      # chrome.storage.sync wrapper (API keys NEVER stored)
+│   └── types.ts        # UpInboxTier + message types
+```
+
+Build:
+```bash
+cd extension && npm install && npm run build:prod
+# Load extension/dist in Chrome: chrome://extensions → Load unpacked
+```
+
+API keys typed in the popup live in `sessionStorage` only — cleared on tab close.
 
 ---
 
 ## Email Classification
 
 The [`@upgpt/email-classifier`](https://github.com/UpGPT-ai/email-classifier) npm package powers free-tier classification:
+
+The `@upgpt/email-classifier` package is **included in this monorepo** at `packages/email-classifier/`:
 
 ```typescript
 import { classifyEmail } from '@upgpt/email-classifier';
@@ -134,10 +169,13 @@ const result = classifyEmail({
   headers: { 'list-unsubscribe': '<mailto:...>' },
   bodyText: 'Your order #123 has shipped...',
 });
-// → { category: 'RECEIPT', confidence: 0.92, signals: ['domain:amazon.com', 'kw_shipped'] }
+// → { category: 'RECEIPT', confidence: 0.87, signals: ['receipt-subject-keyword', 'money-symbol'] }
+
+// Batch:
+const results = classifyEmailBatch(emails);
 ```
 
-Zero dependencies. Works in browser or Node. MIT + attribution.
+Zero dependencies. Works in Node.js, browsers, Chrome extensions, Cloudflare Workers. MIT license.
 
 ---
 
