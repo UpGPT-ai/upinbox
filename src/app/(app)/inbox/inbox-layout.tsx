@@ -21,6 +21,11 @@ import { useAccounts } from '@/hooks/use-accounts';
 import { MailSidebar } from '@/components/layout/sidebar';
 import { EmailList } from '@/components/mail/email-list';
 import { EmailDetail } from '@/components/mail/email-detail';
+import { FeedTabs, activeFeedAtom } from '@/components/screener/feed-tabs';
+import { FeedEmailList } from '@/components/screener/feed-email-list';
+import { FocusList } from '@/components/screener/focus-list';
+import { ConnectAccountWizard } from '@/components/ai/connect-account-wizard';
+import type { FeedType } from '@/components/screener/feed-tabs';
 
 function EmptyState() {
   const [, setShowConnect] = useAtom(showConnectWizardAtom);
@@ -65,15 +70,25 @@ function ToolbarButton({
 }
 
 export function InboxLayout() {
-  const [, setCollapsed] = useAtom(sidebarCollapsedAtom);
-  const collapsed = false; // read-only shortcut — toggled by button only
   const [activeAccountId] = useAtom(activeAccountIdAtom);
   const [activeMailboxId] = useAtom(activeMailboxIdAtom);
   const [readingPane, setReadingPane] = useAtom(readingPanePositionAtom);
   const [sidebarCollapsed, setSidebarCollapsed] = useAtom(sidebarCollapsedAtom);
+  const [showConnectWizard] = useAtom(showConnectWizardAtom);
+  const [activeFeed] = useAtom(activeFeedAtom);
   const { data: accounts = [], isLoading } = useAccounts();
 
   const hasAccounts = accounts.length > 0;
+  const isSpecialFeed = activeFeed !== 'inbox';
+
+  /** Render the list panel based on active feed */
+  const renderListPanel = () => {
+    if (activeFeed === 'focus') return <FocusList />;
+    if (activeFeed !== 'inbox') {
+      return <FeedEmailList feed={activeFeed as FeedType} />;
+    }
+    return activeMailboxId ? <EmailList mailboxId={activeMailboxId} /> : null;
+  };
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -83,7 +98,7 @@ export function InboxLayout() {
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Top toolbar */}
-        <div className="h-12 border-b flex items-center px-4 gap-2 flex-shrink-0">
+        <div className="h-11 border-b flex items-center px-4 gap-2 flex-shrink-0">
           <ToolbarButton
             onClick={() => setSidebarCollapsed((v) => !v)}
             title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
@@ -94,41 +109,23 @@ export function InboxLayout() {
           <div className="flex-1" />
 
           <div className="flex items-center gap-1 border rounded-md p-0.5">
-            <button
-              onClick={() => setReadingPane('right')}
-              title="Reading pane right"
-              className={`px-2 py-1 text-xs rounded transition-colors ${
-                readingPane === 'right'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'hover:bg-muted'
-              }`}
-            >
-              ⊞
-            </button>
-            <button
-              onClick={() => setReadingPane('bottom')}
-              title="Reading pane bottom"
-              className={`px-2 py-1 text-xs rounded transition-colors ${
-                readingPane === 'bottom'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'hover:bg-muted'
-              }`}
-            >
-              ⊟
-            </button>
-            <button
-              onClick={() => setReadingPane('none')}
-              title="No reading pane"
-              className={`px-2 py-1 text-xs rounded transition-colors ${
-                readingPane === 'none'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'hover:bg-muted'
-              }`}
-            >
-              ≡
-            </button>
+            {(['right', 'bottom', 'none'] as const).map((pos) => (
+              <button
+                key={pos}
+                onClick={() => setReadingPane(pos)}
+                title={{ right: 'Reading pane right', bottom: 'Reading pane bottom', none: 'List only' }[pos]}
+                className={`px-2 py-1 text-xs rounded transition-colors ${
+                  readingPane === pos ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                }`}
+              >
+                {pos === 'right' ? '⊞' : pos === 'bottom' ? '⊟' : '≡'}
+              </button>
+            ))}
           </div>
         </div>
+
+        {/* Feed tabs */}
+        {hasAccounts && <FeedTabs />}
 
         {/* Content area */}
         {isLoading ? (
@@ -140,7 +137,7 @@ export function InboxLayout() {
         ) : readingPane === 'right' ? (
           <div className="flex-1 flex min-h-0">
             <div className="w-80 xl:w-96 border-r flex-shrink-0 overflow-hidden">
-              {activeMailboxId && <EmailList mailboxId={activeMailboxId} />}
+              {renderListPanel()}
             </div>
             <div className="flex-1 overflow-hidden">
               <EmailDetail />
@@ -149,7 +146,7 @@ export function InboxLayout() {
         ) : readingPane === 'bottom' ? (
           <div className="flex-1 flex flex-col min-h-0">
             <div className="flex-1 overflow-hidden border-b">
-              {activeMailboxId && <EmailList mailboxId={activeMailboxId} />}
+              {renderListPanel()}
             </div>
             <div className="h-80 xl:h-96 overflow-hidden">
               <EmailDetail />
@@ -157,10 +154,13 @@ export function InboxLayout() {
           </div>
         ) : (
           <div className="flex-1 overflow-hidden">
-            {activeMailboxId && <EmailList mailboxId={activeMailboxId} />}
+            {renderListPanel()}
           </div>
         )}
       </div>
+
+      {/* Connect wizard modal */}
+      {showConnectWizard && <ConnectAccountWizard />}
     </div>
   );
 }
