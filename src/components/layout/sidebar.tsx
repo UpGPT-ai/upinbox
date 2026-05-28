@@ -75,12 +75,16 @@ function sortMailboxes(mailboxes: JmapMailbox[]): JmapMailbox[] {
 function AccountDropdown({
   accounts,
   activeAccountId,
+  unified,
   onSelect,
+  onShowAll,
   onAddAccount,
 }: {
   accounts: MailAccount[];
   activeAccountId: string | null;
+  unified: boolean;
   onSelect: (id: string) => void;
+  onShowAll: () => void;
   onAddAccount: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -112,11 +116,22 @@ function AccountDropdown({
         aria-haspopup="listbox"
         aria-expanded={open}
       >
-        {active ? avatar(active.email_address) : (
+        {unified ? (
+          <div className="w-7 h-7 rounded-full bg-primary/15 text-primary flex items-center justify-center text-sm flex-shrink-0">
+            📬
+          </div>
+        ) : active ? avatar(active.email_address) : (
           <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center text-xs text-muted-foreground">?</div>
         )}
         <div className="flex-1 min-w-0">
-          {active ? (
+          {unified ? (
+            <>
+              <div className="text-sm font-medium truncate leading-tight">All Inboxes</div>
+              <div className="text-xs text-muted-foreground truncate leading-tight">
+                {accounts.length} account{accounts.length === 1 ? '' : 's'}
+              </div>
+            </>
+          ) : active ? (
             <>
               <div className="text-sm font-medium truncate leading-tight">
                 {active.display_name || active.email_address.split('@')[0]}
@@ -175,7 +190,27 @@ function AccountDropdown({
 
           <div className="border-t my-1" />
 
-          <div className="px-2 py-1">
+          <div className="px-2 py-1 space-y-0.5">
+            {/* Show All — only when multiple accounts */}
+            {accounts.length > 1 && (
+              <button
+                onClick={() => { onShowAll(); setOpen(false); }}
+                className={`
+                  w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-sm transition-colors text-left
+                  ${unified ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground hover:bg-accent/60'}
+                `}
+              >
+                <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center text-sm flex-shrink-0">
+                  📬
+                </div>
+                <span className="font-medium">Show All</span>
+                {unified && (
+                  <svg className="w-3.5 h-3.5 text-primary ml-auto flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                )}
+              </button>
+            )}
             <button
               onClick={() => { onAddAccount(); setOpen(false); }}
               className="w-full flex items-center gap-2.5 px-2 py-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-accent/60 transition-colors"
@@ -358,7 +393,9 @@ export function MailSidebar() {
           <AccountDropdown
             accounts={accounts}
             activeAccountId={activeAccountId}
-            onSelect={setActiveAccountId}
+            unified={unified}
+            onSelect={(id) => { setActiveAccountId(id); setUnified(false); }}
+            onShowAll={() => { setUnified(true); }}
             onAddAccount={() => setShowConnectWizard(true)}
           />
         )}
