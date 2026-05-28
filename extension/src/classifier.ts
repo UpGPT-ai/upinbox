@@ -5,13 +5,13 @@
  *  1. UpLink     — local Ollama via UpLink daemon (low latency, any tier)
  *  2. BYOK       — Claude / OpenAI / Gemini (95% accuracy, plus+)
  *  3. Intelligence API — hosted privacy-safe metadata (95%, business tier)
- *  4. Heuristic  — @upgpt/email-classifier (70%, always available, zero network)
+ *  4. Heuristic  — @upgpt-ai/email-classifier (70%, always available, zero network)
  *
  * Heuristic runs first as an early-exit: if confidence >= 0.8, skip AI entirely.
  * This prevents unnecessary API calls for obvious emails.
  */
 
-import { classifyEmail as heuristicClassify } from '@upgpt/email-classifier';
+import { classifyEmail as heuristicClassify } from '@upgpt-ai/email-classifier';
 import type {
   ClassificationResult,
   ClassifyEmailPayload,

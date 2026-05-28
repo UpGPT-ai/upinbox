@@ -147,7 +147,7 @@ export interface JmapEmailSubmission {
 
 /**
  * Email triage result — produced by any of the 4 intelligence paths:
- * 1. @upgpt/email-classifier (npm package, 70% accuracy, free)
+ * 1. @upgpt-ai/email-classifier (npm package, 70% accuracy, free)
  * 2. BYOK AI (user's own Claude/GPT/Gemini key)
  * 3. UpLink local AI (Ollama, 100% offline)
  * 4. Intelligence API (api.upinbox.ai, 95% accuracy, Business/Enterprise license)
@@ -155,7 +155,7 @@ export interface JmapEmailSubmission {
 export interface TriageResult {
   emailId: string;
   /**
-   * Normalized to @upgpt/email-classifier categories:
+   * Normalized to @upgpt-ai/email-classifier categories:
    * ACTION_REQUIRED | FYI | NEWSLETTER | PROMOTION | RECEIPT | EXPIRED | SOCIAL | AUTOMATED
    */
   category: string;

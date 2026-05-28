@@ -5,7 +5,7 @@
 UpInbox is an open-source email intelligence layer that connects to Gmail, Outlook, Fastmail, or any IMAP server — and makes it smart. You choose the AI: bring your own Claude/GPT/Gemini key, run it 100% locally with [UpLink](https://uplink.upgpt.ai), or use our hosted intelligence API.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![npm: @upgpt/email-classifier](https://img.shields.io/badge/npm-%40upgpt%2Femail--classifier-red)](https://www.npmjs.com/package/@upgpt/email-classifier)
+[![npm: @upgpt-ai/email-classifier](https://img.shields.io/badge/npm-%40upgpt%2Femail--classifier-red)](https://www.npmjs.com/package/@upgpt-ai/email-classifier)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black)](https://nextjs.org/)
 
@@ -69,7 +69,7 @@ The Docker image includes:
 - Stalwart mail server (for optional @yourdomain.com addresses)
 - PostgreSQL
 
-**What's in the image:** JMAP/IMAP adapters, USX encryption, BYOK AI routing, the [`@upgpt/email-classifier`](https://github.com/UpGPT-ai/email-classifier) npm package (UAL-1.0, 70% heuristic accuracy).
+**What's in the image:** JMAP/IMAP adapters, USX encryption, BYOK AI routing, the [`@upgpt-ai/email-classifier`](https://github.com/UpGPT-ai/email-classifier) npm package (UAL-1.0, 70% heuristic accuracy).
 
 **What's not in the image:** UpInbox's trained intelligence classifier (~95% accuracy, no API key needed). That lives at `api.upinbox.ai` and requires a [Business or Enterprise license](https://upinbox.ai/licenses). Community tier (≤10 users) is free forever with heuristic classification and BYOK.
 
@@ -89,7 +89,7 @@ The Docker image includes:
 │                                                                 │
 │  ┌──────────────────────────────────────────────────────────┐  │
 │  │ Intelligence Router                                      │  │
-│  │  ① @upgpt/email-classifier (npm, free, 70%)             │  │
+│  │  ① @upgpt-ai/email-classifier (npm, free, 70%)             │  │
 │  │  ② BYOK: your Claude/GPT key → your bill               │  │
 │  │  ③ UpLink: localhost Ollama → 100% local               │  │
 │  │  ④ Intelligence API: api.upinbox.ai (license JWT, 95%) │  │
@@ -156,12 +156,12 @@ API keys typed in the popup live in `sessionStorage` only — cleared on tab clo
 
 ## Email Classification
 
-The [`@upgpt/email-classifier`](https://github.com/UpGPT-ai/email-classifier) npm package powers free-tier classification:
+The [`@upgpt-ai/email-classifier`](https://github.com/UpGPT-ai/email-classifier) npm package powers free-tier classification:
 
-The `@upgpt/email-classifier` package is **included in this monorepo** at `packages/email-classifier/`:
+The `@upgpt-ai/email-classifier` package is **included in this monorepo** at `packages/email-classifier/`:
 
 ```typescript
-import { classifyEmail } from '@upgpt/email-classifier';
+import { classifyEmail } from '@upgpt-ai/email-classifier';
 
 const result = classifyEmail({
   subject: 'Re: Your order has shipped',
@@ -183,7 +183,7 @@ Zero dependencies. Works in Node.js, browsers, Chrome extensions, Cloudflare Wor
 
 UpInbox client code: **MIT License** — see [LICENSE](LICENSE)
 
-`@upgpt/email-classifier` package: **[UAL-1.0](https://github.com/UpGPT-ai/email-classifier/blob/main/LICENSE)** — free with "Powered by UpGPT.ai" attribution. Commercial license (remove attribution): [hello@upgpt.ai](mailto:hello@upgpt.ai)
+`@upgpt-ai/email-classifier` package: **[UAL-1.0](https://github.com/UpGPT-ai/email-classifier/blob/main/LICENSE)** — free with "Powered by UpGPT.ai" attribution. Commercial license (remove attribution): [hello@upgpt.ai](mailto:hello@upgpt.ai)
 
 UpInbox Intelligence API: Proprietary — [license tiers](https://upinbox.ai/licenses)
 
@@ -204,7 +204,7 @@ PRs welcome on the client, adapters, encryption layer, and MCP server. See [CONT
 
 - 🌐 [upinbox.ai](https://upinbox.ai)
 - 📧 [Create a free @upinbox.ai address](https://upinbox.ai)
-- 📦 [npm: @upgpt/email-classifier](https://www.npmjs.com/package/@upgpt/email-classifier)
+- 📦 [npm: @upgpt-ai/email-classifier](https://www.npmjs.com/package/@upgpt-ai/email-classifier)
 - 🔌 [UpInbox MCP Server](https://github.com/UpGPT-ai/upinbox-mcp)
 - 🤖 [UpLink — Local AI](https://uplink.upgpt.ai)
 - 📖 [Self-hosting guide](docs/SELF-HOSTING.md)

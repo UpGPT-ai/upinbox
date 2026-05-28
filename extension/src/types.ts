@@ -39,7 +39,7 @@ export function normalizeTier(raw: string): UpInboxTier {
  *  1. uplink     — local Ollama via UpLink daemon (any tier with UpLink installed)
  *  2. byok       — BYOK AI (Claude / GPT / Gemini) — plus and above
  *  3. intelligence — Intelligence API (hosted, privacy-safe metadata only) — business tier
- *  4. heuristic  — @upgpt/email-classifier npm package (70% accuracy, always available)
+ *  4. heuristic  — @upgpt-ai/email-classifier npm package (70% accuracy, always available)
  */
 export type ClassifierPath = 'heuristic' | 'byok' | 'intelligence' | 'uplink';
 

@@ -60,7 +60,7 @@ Every mail backend implements `MailProvider`. If you're adding Exchange or Yahoo
 
 ### Intelligence / Classification
 
-The `@upgpt/email-classifier` package is the correct place to improve heuristic accuracy.
+The `@upgpt-ai/email-classifier` package is the correct place to improve heuristic accuracy.
 See [`UpGPT-ai/email-classifier`](https://github.com/UpGPT-ai/email-classifier) — contributions welcome there.
 
 The BYOK router in `src/lib/mail/ai/router.ts` should remain provider-agnostic — don't hardcode prompt templates for specific providers.

@@ -1,7 +1,7 @@
 # UpInbox Architecture
 
 > **Version:** 1.0 — May 2026
-> **License:** MIT (client, adapters, USX, encryption layer) | UAL-1.0 (`@upgpt/email-classifier`)
+> **License:** MIT (client, adapters, USX, encryption layer) | UAL-1.0 (`@upgpt-ai/email-classifier`)
 
 This document describes the full system architecture of UpInbox: how mail flows in, how intelligence is applied, how encryption works, and how the self-hosted and SaaS deployment models differ.
 
@@ -178,16 +178,16 @@ Incoming message
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### Path A — Heuristic (`@upgpt/email-classifier`)
+### Path A — Heuristic (`@upgpt-ai/email-classifier`)
 
-- **Package:** `@upgpt/email-classifier` (npm, UAL-1.0, ships in Docker)
+- **Package:** `@upgpt-ai/email-classifier` (npm, UAL-1.0, ships in Docker)
 - **Accuracy:** ~70% (rule-based + n-gram features, no model weights)
 - **Latency:** <5ms (synchronous, in-process)
 - **Privacy:** 100% — runs inside your Docker container, zero network calls
 - **Available:** Community tier and above
 
 ```typescript
-import { classify } from '@upgpt/email-classifier';
+import { classify } from '@upgpt-ai/email-classifier';
 const label = classify({ subject, snippet, senderDomain, headers });
 // Returns: 'newsletter' | 'transactional' | 'personal' | 'work' | 'spam' | 'unknown'
 ```
@@ -550,7 +550,7 @@ UpInbox is intentionally open about the client-side architecture. Here is what i
 | `packages/email-classifier/` | UAL-1.0 | Heuristic classifier (~70% accuracy) |
 | `docker/` | MIT | Docker Compose, Stalwart config, Nginx templates |
 
-**UAL-1.0 note:** The `@upgpt/email-classifier` package is source-available under the UpGPT Attribution License. Free for personal and internal commercial use. Requires attribution. Cannot be used to build a competing email intelligence product without a commercial license.
+**UAL-1.0 note:** The `@upgpt-ai/email-classifier` package is source-available under the UpGPT Attribution License. Free for personal and internal commercial use. Requires attribution. Cannot be used to build a competing email intelligence product without a commercial license.
 
 ### Not in the Repository (Proprietary, API-only)
 
@@ -567,7 +567,7 @@ The Intelligence API contract is stable and documented. You can build on it. The
 
 ## Contributing
 
-See [CONTRIBUTING.md](../CONTRIBUTING.md). The MIT-licensed portions welcome PRs. The `@upgpt/email-classifier` package accepts bug fixes and feature contributions under the UAL-1.0 CLA.
+See [CONTRIBUTING.md](../CONTRIBUTING.md). The MIT-licensed portions welcome PRs. The `@upgpt-ai/email-classifier` package accepts bug fixes and feature contributions under the UAL-1.0 CLA.
 
 ## Further Reading
 

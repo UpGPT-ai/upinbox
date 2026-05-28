@@ -1,5 +1,5 @@
 /**
- * @upgpt/email-classifier
+ * @upgpt-ai/email-classifier
  *
  * Heuristic email classifier — 70% accuracy, zero network, zero dependencies.
  * Works in any JS environment: Node.js, browser, Chrome extension, Cloudflare Workers.
@@ -8,7 +8,7 @@
  * No training data, no ML model, no API calls.
  *
  * Usage:
- *   import { classifyEmail } from '@upgpt/email-classifier';
+ *   import { classifyEmail } from '@upgpt-ai/email-classifier';
  *   const result = classifyEmail({ subject, from, bodyText, snippet, headers });
  */
 

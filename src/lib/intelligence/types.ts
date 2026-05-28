@@ -5,12 +5,12 @@
  *   A (SaaS): platform triage pipeline
  *   B (Self-host + license JWT): Intelligence API at api.upinbox.ai
  *   C (BYOK): user's Claude/GPT/Gemini key (browser-direct)
- *   D (Community): @upgpt/email-classifier npm package (heuristic, 70%)
+ *   D (Community): @upgpt-ai/email-classifier npm package (heuristic, 70%)
  *
  * See docs/ARCHITECTURE.md → Intelligence Router section.
  */
 
-/** Email categories — match @upgpt/email-classifier taxonomy */
+/** Email categories — match @upgpt-ai/email-classifier taxonomy */
 export type EmailCategory =
   | 'ACTION_REQUIRED'
   | 'FYI'

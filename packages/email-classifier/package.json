@@ -1,5 +1,5 @@
 {
-  "name": "@upgpt/email-classifier",
+  "name": "@upgpt-ai/email-classifier",
   "version": "0.1.0",
   "description": "Heuristic email classifier — 70% accuracy, zero network, zero dependencies. Works in any JS environment.",
   "keywords": [

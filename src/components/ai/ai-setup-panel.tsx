@@ -248,8 +248,8 @@ export function AiSetupPanel() {
           <p className="font-medium text-foreground mb-1">No AI configured</p>
           <p>
             Without AI, UpInbox uses the free{' '}
-            <a href="https://www.npmjs.com/package/@upgpt/email-classifier" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-              @upgpt/email-classifier
+            <a href="https://www.npmjs.com/package/@upgpt-ai/email-classifier" target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+              @upgpt-ai/email-classifier
             </a>{' '}
             heuristic (70% accuracy). Add a key above for full AI triage.
           </p>

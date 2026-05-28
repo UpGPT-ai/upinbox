@@ -5,13 +5,13 @@
  *   1. BYOK (user's API key) — if confidence from heuristic < 0.8
  *   2. UpLink — local Ollama, if enabled
  *   3. Intelligence API — if license JWT present (self-hosted Business/Enterprise)
- *   4. @upgpt/email-classifier — heuristic npm package (always available, 70% accuracy)
+ *   4. @upgpt-ai/email-classifier — heuristic npm package (always available, 70% accuracy)
  *
  * For the SaaS platform, classification happens in the platform triage pipeline
  * (not here) — this router is for self-hosted instances and the Chrome extension.
  */
 
-import { classifyEmail } from '@upgpt/email-classifier';
+import { classifyEmail } from '@upgpt-ai/email-classifier';
 import { classifyWithByok } from './byok-classifier';
 import { extractMetadataFeatures } from './metadata-features';
 import type {

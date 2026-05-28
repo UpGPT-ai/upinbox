@@ -84,7 +84,7 @@ Incoming AI task (classify / summarize / draft)
 │     And user opted into API            API, feature vector)    │
 │                                                                 │
 │  4. Default fallback           ──────► Path A (Heuristic,      │
-│                                         @upgpt/email-classifier)│
+│                                         @upgpt-ai/email-classifier)│
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -94,7 +94,7 @@ The user can override this priority order in Settings → AI, for example pinnin
 
 ## 3. Path A: Heuristic (Free, Always Available)
 
-**Package:** `@upgpt/email-classifier` (npm, UAL-1.0)
+**Package:** `@upgpt-ai/email-classifier` (npm, UAL-1.0)
 **Accuracy:** ~70%
 **Cost:** Zero
 **Privacy:** Absolute — runs in-process, zero network calls
@@ -102,7 +102,7 @@ The user can override this priority order in Settings → AI, for example pinnin
 The heuristic classifier ships inside every UpInbox Docker image. It runs synchronously in Node.js (or in the browser via the WASM build). No model weights, no neural network — it uses a combination of rule-based patterns, n-gram features, and sender domain reputation to classify messages.
 
 ```typescript
-import { classify } from '@upgpt/email-classifier';
+import { classify } from '@upgpt-ai/email-classifier';
 
 const result = classify({
   subject: 'Your order has shipped',

@@ -2,7 +2,7 @@
  * Tests for the 4-path email classifier
  *
  * Mock strategy:
- * - @upgpt/email-classifier: vitest mock (no network)
+ * - @upgpt-ai/email-classifier: vitest mock (no network)
  * - fetch: vi.fn() stubs per test
  * - chrome.runtime: minimal stub
  */
@@ -14,11 +14,11 @@ import { DEFAULT_SETTINGS } from '../types';
 
 // ─── Mocks ─────────────────────────────────────────────────────────────────────
 
-vi.mock('@upgpt/email-classifier', () => ({
+vi.mock('@upgpt-ai/email-classifier', () => ({
   classifyEmail: vi.fn(),
 }));
 
-import { classifyEmail as mockHeuristic } from '@upgpt/email-classifier';
+import { classifyEmail as mockHeuristic } from '@upgpt-ai/email-classifier';
 const mockHeuristicFn = vi.mocked(mockHeuristic);
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -68,7 +68,7 @@ describe('runHeuristic', () => {
     expect(result.latencyMs).toBeGreaterThanOrEqual(0);
   });
 
-  it('passes subject and fromEmail to @upgpt/email-classifier', () => {
+  it('passes subject and fromEmail to @upgpt-ai/email-classifier', () => {
     runHeuristic(basePayload);
     expect(mockHeuristicFn).toHaveBeenCalledWith(
       expect.objectContaining({ subject: 'Q3 budget review', from: 'cfo@example.com' })

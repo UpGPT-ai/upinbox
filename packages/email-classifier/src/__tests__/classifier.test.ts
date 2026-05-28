@@ -1,5 +1,5 @@
 /**
- * @upgpt/email-classifier — unit tests
+ * @upgpt-ai/email-classifier — unit tests
  *
  * Tests cover: all 7 categories, edge cases, batch classification,
  * confidence range, signal reporting, and zero-dependency constraint.

@@ -23,7 +23,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@upgpt/email-classifier": "^0.1.0",
+    "@upgpt-ai/email-classifier": "^0.1.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.45.0",
     "@tiptap/react": "^2.6.0",
