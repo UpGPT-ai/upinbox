@@ -549,11 +549,12 @@ export class ImapProvider implements MailProvider {
       const lock = await client.getMailboxLock(mailboxPath);
       let count = 0;
       try {
-        const allUids = await client.search({ all: true }, { uid: true });
+        const searchResult = await client.search({ all: true }, { uid: true });
+        const allUids: number[] = Array.isArray(searchResult) ? searchResult : [];
         count = allUids.length;
         if (count > 0) {
-          await client.messageFlagsAdd(allUids, ['\\Deleted'], { uid: true });
-          await client.expunge();
+          // messageDelete marks as \Deleted and expunges in one step
+          await client.messageDelete(allUids, { uid: true });
         }
       } finally {
         lock.release();

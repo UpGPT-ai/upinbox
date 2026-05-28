@@ -5,11 +5,29 @@
  *
  * Top: dropdown showing active account, listing all accounts, + Add account.
  * Middle: mailbox list for active account (role-ordered, junk/trash at bottom).
+ *         Drag-and-drop reordering via @dnd-kit. Order persisted to user_metadata.
  * Bottom: compose button + settings link.
  */
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useAtom } from 'jotai';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 import {
   activeAccountIdAtom,
   activeMailboxIdAtom,
@@ -45,29 +63,38 @@ const ROLE_ORDER: Record<string, number> = {
   archive: 3,
 };
 
-function sortMailboxes(mailboxes: JmapMailbox[]): JmapMailbox[] {
+function defaultSortMailboxes(mailboxes: JmapMailbox[]): JmapMailbox[] {
   return [...mailboxes].sort((a, b) => {
     const aBottom = a.role && BOTTOM_ROLES.has(a.role);
     const bBottom = b.role && BOTTOM_ROLES.has(b.role);
 
-    // Bottom roles always after normal folders
     if (aBottom && !bBottom) return 1;
     if (!aBottom && bBottom) return -1;
 
-    // Within bottom group: spam before trash
     if (aBottom && bBottom) {
       const bottomOrder = { spam: 0, junk: 0, trash: 1 };
       return (bottomOrder[a.role as keyof typeof bottomOrder] ?? 0) -
              (bottomOrder[b.role as keyof typeof bottomOrder] ?? 0);
     }
 
-    // Normal folders: role order first
     const ai = a.role != null ? (ROLE_ORDER[a.role] ?? 50) : 50;
     const bi = b.role != null ? (ROLE_ORDER[b.role] ?? 50) : 50;
     if (ai !== bi) return ai - bi;
 
     return a.name.localeCompare(b.name);
   });
+}
+
+/** Apply a saved ID order to mailboxes; items not in the saved order go to end */
+function applyOrder(mailboxes: JmapMailbox[], savedIds: string[]): JmapMailbox[] {
+  if (!savedIds.length) return defaultSortMailboxes(mailboxes);
+  const idSet = new Set(savedIds);
+  const ordered = savedIds.flatMap((id) => {
+    const mb = mailboxes.find((m) => m.id === id);
+    return mb ? [mb] : [];
+  });
+  const rest = defaultSortMailboxes(mailboxes.filter((m) => !idSet.has(m.id)));
+  return [...ordered, ...rest];
 }
 
 // ─── Account Dropdown ─────────────────────────────────────────────────────────
@@ -91,7 +118,6 @@ function AccountDropdown({
   const ref = useRef<HTMLDivElement>(null);
   const active = accounts.find((a) => a.id === activeAccountId) ?? accounts[0];
 
-  // Close on outside click
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
@@ -191,7 +217,6 @@ function AccountDropdown({
           <div className="border-t my-1" />
 
           <div className="px-2 py-1 space-y-0.5">
-            {/* Show All — only when multiple accounts */}
             {accounts.length > 1 && (
               <button
                 onClick={() => { onShowAll(); setOpen(false); }}
@@ -227,9 +252,24 @@ function AccountDropdown({
   );
 }
 
-// ─── Mailbox item ─────────────────────────────────────────────────────────────
+// ─── Sortable Mailbox item ─────────────────────────────────────────────────────
 
-function MailboxItem({ mailbox }: { mailbox: JmapMailbox }) {
+function SortableMailboxItem({ mailbox }: { mailbox: JmapMailbox }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: mailbox.id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+  };
+
   const [activeMailboxId, setActiveMailboxId] = useAtom(activeMailboxIdAtom);
   const [, setUnified] = useAtom(unifiedInboxAtom);
   const isActive = activeMailboxId === mailbox.id;
@@ -238,41 +278,131 @@ function MailboxItem({ mailbox }: { mailbox: JmapMailbox }) {
   const icon = ROLE_ICONS[role] ?? '📁';
 
   return (
-    <button
-      onClick={() => {
-        setUnified(false);
-        setActiveMailboxId(mailbox.id);
-      }}
-      className={`
-        w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm
-        transition-colors text-left
-        ${isActive
-          ? 'bg-primary text-primary-foreground'
-          : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-        }
-      `}
-    >
-      <span className="text-sm leading-none w-4 text-center flex-shrink-0">{icon}</span>
-      <span className="flex-1 truncate">{mailbox.name}</span>
-      {(mailbox.unreadEmails ?? 0) > 0 && (
-        <span className={`
-          text-xs font-semibold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center
+    <div ref={setNodeRef} style={style} className="flex items-center group/mb">
+      {/* Drag handle — only visible on hover */}
+      <button
+        {...attributes}
+        {...listeners}
+        className="opacity-0 group-hover/mb:opacity-40 hover:!opacity-100 w-4 flex-shrink-0 flex items-center justify-center cursor-grab active:cursor-grabbing text-muted-foreground transition-opacity"
+        tabIndex={-1}
+        aria-label="Drag to reorder"
+      >
+        <svg width="10" height="14" viewBox="0 0 10 14" fill="currentColor">
+          <circle cx="3" cy="2.5" r="1.2" />
+          <circle cx="7" cy="2.5" r="1.2" />
+          <circle cx="3" cy="7" r="1.2" />
+          <circle cx="7" cy="7" r="1.2" />
+          <circle cx="3" cy="11.5" r="1.2" />
+          <circle cx="7" cy="11.5" r="1.2" />
+        </svg>
+      </button>
+
+      <button
+        onClick={() => {
+          setUnified(false);
+          setActiveMailboxId(mailbox.id);
+        }}
+        className={`
+          flex-1 flex items-center gap-2 px-2 py-1.5 rounded-md text-sm
+          transition-colors text-left
           ${isActive
-            ? 'bg-primary-foreground/20 text-primary-foreground'
-            : 'bg-primary/10 text-primary'
+            ? 'bg-primary text-primary-foreground'
+            : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
           }
-        `}>
-          {mailbox.unreadEmails}
-        </span>
-      )}
-    </button>
+        `}
+      >
+        <span className="text-sm leading-none w-4 text-center flex-shrink-0">{icon}</span>
+        <span className="flex-1 truncate">{mailbox.name}</span>
+        {(mailbox.unreadEmails ?? 0) > 0 && (
+          <span className={`
+            text-xs font-semibold px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center
+            ${isActive
+              ? 'bg-primary-foreground/20 text-primary-foreground'
+              : 'bg-primary/10 text-primary'
+            }
+          `}>
+            {mailbox.unreadEmails}
+          </span>
+        )}
+      </button>
+    </div>
   );
 }
 
-// ─── Account section (mailbox list) ──────────────────────────────────────────
+// ─── Account section (mailbox list with drag-to-reorder) ─────────────────────
 
 function AccountSection({ accountId }: { accountId: string }) {
   const { data: mailboxes = [], isLoading } = useMailboxes(accountId);
+  const [sortedMailboxes, setSortedMailboxes] = useState<JmapMailbox[]>([]);
+  const [orderLoaded, setOrderLoaded] = useState(false);
+  const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, {
+      activationConstraint: { distance: 5 },
+    }),
+    useSensor(KeyboardSensor, {
+      coordinateGetter: sortableKeyboardCoordinates,
+    })
+  );
+
+  // Load saved order from server on mount / account change
+  useEffect(() => {
+    if (!accountId) return;
+    setOrderLoaded(false);
+    fetch('/api/upinbox/mailbox-order')
+      .then((r) => r.json())
+      .then((data: { order?: Record<string, string[]> }) => {
+        const savedIds: string[] = data.order?.[accountId] ?? [];
+        setSortedMailboxes((prev) => {
+          // Use whatever mailboxes are already loaded; re-apply after they load too
+          const base = prev.length ? prev : mailboxes;
+          return applyOrder(base, savedIds);
+        });
+        setOrderLoaded(true);
+      })
+      .catch(() => setOrderLoaded(true));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [accountId]);
+
+  // Re-sort when mailboxes load (after order is known)
+  useEffect(() => {
+    if (!mailboxes.length) return;
+    setSortedMailboxes((prev) => {
+      if (!orderLoaded) {
+        // Order not loaded yet — use default sort temporarily
+        return defaultSortMailboxes(mailboxes);
+      }
+      // Preserve current order for IDs we already know; append new ones
+      const existingIds = prev.map((m) => m.id);
+      return applyOrder(mailboxes, existingIds);
+    });
+  }, [mailboxes, orderLoaded]);
+
+  const saveOrder = useCallback((ids: string[]) => {
+    if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = setTimeout(() => {
+      fetch('/api/upinbox/mailbox-order', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, orderedIds: ids }),
+      }).catch(console.error);
+    }, 500);
+  }, [accountId]);
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+
+    setSortedMailboxes((items) => {
+      const oldIndex = items.findIndex((m) => m.id === active.id);
+      const newIndex = items.findIndex((m) => m.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return items;
+      const newItems = arrayMove(items, oldIndex, newIndex);
+      saveOrder(newItems.map((m) => m.id));
+      return newItems;
+    });
+  };
 
   if (isLoading) {
     return (
@@ -284,25 +414,32 @@ function AccountSection({ accountId }: { accountId: string }) {
     );
   }
 
-  // Junk/Spam + Trash sorted to the bottom
-  const sorted = sortMailboxes(mailboxes);
+  const ids = sortedMailboxes.map((m) => m.id);
 
-  // Inject a visual separator before the bottom group
-  const firstBottomIdx = sorted.findIndex(
+  // Find first bottom-role item to inject separator
+  const firstBottomIdx = sortedMailboxes.findIndex(
     (mb) => mb.role && BOTTOM_ROLES.has(mb.role)
   );
 
   return (
-    <div className="space-y-0.5 px-2">
-      {sorted.map((mb, idx) => (
-        <div key={mb.id}>
-          {idx === firstBottomIdx && firstBottomIdx > 0 && (
-            <div className="my-1 border-t border-border/50" />
-          )}
-          <MailboxItem mailbox={mb} />
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleDragEnd}
+    >
+      <SortableContext items={ids} strategy={verticalListSortingStrategy}>
+        <div className="space-y-0.5 px-1">
+          {sortedMailboxes.map((mb, idx) => (
+            <div key={mb.id}>
+              {idx === firstBottomIdx && firstBottomIdx > 0 && (
+                <div className="my-1 border-t border-border/50 mx-1" />
+              )}
+              <SortableMailboxItem mailbox={mb} />
+            </div>
+          ))}
         </div>
-      ))}
-    </div>
+      </SortableContext>
+    </DndContext>
   );
 }
 
@@ -376,7 +513,7 @@ export function MailSidebar() {
         )}
       </div>
 
-      {/* Mailbox list — always visible. Show All is the first item when multiple accounts exist */}
+      {/* Mailbox list */}
       <div className="flex-1 overflow-y-auto py-2">
         {activeAccountId && (
           <AccountSection accountId={activeAccountId} />

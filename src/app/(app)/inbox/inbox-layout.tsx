@@ -7,8 +7,13 @@
  *   - sidebarCollapsedAtom
  *   - readingPanePositionAtom ('right' | 'bottom' | 'none')
  *   - openEmailIdAtom (whether an email is selected)
+ *   - toolbarCollapsedAtom (hide top toolbar for more vertical space)
+ *
+ * Fullscreen: uses document.requestFullscreen() to hide browser chrome entirely.
+ * Toolbar collapse: hides the app's own top bar (toolbar row) separately.
  */
 
+import { useState, useEffect } from 'react';
 import { useAtom } from 'jotai';
 import {
   activeAccountIdAtom,
@@ -18,6 +23,7 @@ import {
   showConnectWizardAtom,
   composeDraftAtom,
   unifiedInboxAtom,
+  toolbarCollapsedAtom,
 } from '@/atoms/mail';
 import { useAccounts } from '@/hooks/use-accounts';
 import { MailSidebar } from '@/components/layout/sidebar';
@@ -57,21 +63,110 @@ function ToolbarButton({
   onClick,
   title,
   children,
+  active = false,
 }: {
   onClick: () => void;
   title: string;
   children: React.ReactNode;
+  active?: boolean;
 }) {
   return (
     <button
       onClick={onClick}
       title={title}
-      className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+      className={`p-1.5 rounded transition-colors ${
+        active
+          ? 'bg-primary/10 text-primary'
+          : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+      }`}
     >
       {children}
     </button>
   );
 }
+
+// ─── SVG icons ────────────────────────────────────────────────────────────────
+
+function IconFullscreen({ exit }: { exit: boolean }) {
+  return exit ? (
+    // Exit fullscreen — arrows pointing inward
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 3v3a2 2 0 0 1-2 2H3" />
+      <path d="M21 8h-3a2 2 0 0 1-2-2V3" />
+      <path d="M3 16h3a2 2 0 0 1 2 2v3" />
+      <path d="M16 21v-3a2 2 0 0 1 2-2h3" />
+    </svg>
+  ) : (
+    // Enter fullscreen — arrows pointing outward
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 3H5a2 2 0 0 0-2 2v3" />
+      <path d="M21 8V5a2 2 0 0 0-2-2h-3" />
+      <path d="M3 16v3a2 2 0 0 0 2 2h3" />
+      <path d="M16 21h3a2 2 0 0 0 2-2v-3" />
+    </svg>
+  );
+}
+
+function IconHideBar() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="20" height="4" rx="1" />
+      <path d="M12 11v8M9 16l3 3 3-3" />
+    </svg>
+  );
+}
+
+function IconShowBar() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2" y="3" width="20" height="4" rx="1" />
+      <path d="M12 21v-8M9 16l3-3 3 3" />
+    </svg>
+  );
+}
+
+// ─── Floating restore bar (shown when toolbar is collapsed) ───────────────────
+
+function FloatingRestoreBar({
+  onRestore,
+  onFullscreen,
+  isFullscreen,
+}: {
+  onRestore: () => void;
+  onFullscreen: () => void;
+  isFullscreen: boolean;
+}) {
+  const [visible, setVisible] = useState(false);
+
+  // Show on hover near top of screen
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      setVisible(e.clientY < 32);
+    };
+    window.addEventListener('mousemove', onMove);
+    return () => window.removeEventListener('mousemove', onMove);
+  }, []);
+
+  return (
+    <div
+      className={`
+        fixed top-0 left-0 right-0 z-50 flex items-center justify-end gap-1 px-3
+        bg-background/90 backdrop-blur border-b shadow-sm transition-all duration-200
+        ${visible ? 'h-8 opacity-100' : 'h-0 opacity-0 pointer-events-none overflow-hidden'}
+      `}
+    >
+      <span className="text-xs text-muted-foreground mr-auto">UpInbox</span>
+      <ToolbarButton onClick={onFullscreen} title={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}>
+        <IconFullscreen exit={isFullscreen} />
+      </ToolbarButton>
+      <ToolbarButton onClick={onRestore} title="Show toolbar">
+        <IconShowBar />
+      </ToolbarButton>
+    </div>
+  );
+}
+
+// ─── Main layout ──────────────────────────────────────────────────────────────
 
 export function InboxLayout() {
   const [activeAccountId] = useAtom(activeAccountIdAtom);
@@ -82,10 +177,26 @@ export function InboxLayout() {
   const [, setComposeDraft] = useAtom(composeDraftAtom);
   const [activeFeed] = useAtom(activeFeedAtom);
   const [unified] = useAtom(unifiedInboxAtom);
+  const [toolbarCollapsed, setToolbarCollapsed] = useAtom(toolbarCollapsedAtom);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const { data: accounts = [], isLoading } = useAccounts();
 
   const hasAccounts = accounts.length > 0;
-  const isSpecialFeed = activeFeed !== 'inbox';
+
+  // Track real fullscreen state (user can exit with ESC)
+  useEffect(() => {
+    const onFsChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', onFsChange);
+    return () => document.removeEventListener('fullscreenchange', onFsChange);
+  }, []);
+
+  const toggleFullscreen = () => {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(console.error);
+    } else {
+      document.exitFullscreen().catch(console.error);
+    }
+  };
 
   /** Render the list panel based on active feed */
   const renderListPanel = () => {
@@ -104,50 +215,88 @@ export function InboxLayout() {
 
       {/* Main area */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Top toolbar */}
-        <div className="h-11 border-b flex items-center px-4 gap-2 flex-shrink-0">
-          <ToolbarButton
-            onClick={() => setSidebarCollapsed((v) => !v)}
-            title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-          >
-            {sidebarCollapsed ? '▶' : '◀'}
-          </ToolbarButton>
 
-          {/* Compose button */}
-          {hasAccounts && (
-            <button
-              onClick={() => setComposeDraft({
-                mode: 'new',
-                to: [],
-                cc: [],
-                bcc: [],
-                subject: '',
-                body: '',
-              })}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+        {/* Top toolbar — collapsible */}
+        {!toolbarCollapsed && (
+          <div className="h-11 border-b flex items-center px-4 gap-2 flex-shrink-0">
+            <ToolbarButton
+              onClick={() => setSidebarCollapsed((v) => !v)}
+              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
             >
-              <span className="text-base leading-none">✏️</span>
-              <span>Compose</span>
-            </button>
-          )}
+              {sidebarCollapsed ? (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 18l6-6-6-6" />
+                </svg>
+              ) : (
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M15 18l-6-6 6-6" />
+                </svg>
+              )}
+            </ToolbarButton>
 
-          <div className="flex-1" />
-
-          <div className="flex items-center gap-1 border rounded-md p-0.5">
-            {(['right', 'bottom', 'none'] as const).map((pos) => (
+            {/* Compose button */}
+            {hasAccounts && (
               <button
-                key={pos}
-                onClick={() => setReadingPane(pos)}
-                title={{ right: 'Reading pane right', bottom: 'Reading pane bottom', none: 'List only' }[pos]}
-                className={`px-2 py-1 text-xs rounded transition-colors ${
-                  readingPane === pos ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
-                }`}
+                onClick={() => setComposeDraft({
+                  mode: 'new',
+                  to: [],
+                  cc: [],
+                  bcc: [],
+                  subject: '',
+                  body: '',
+                })}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
               >
-                {pos === 'right' ? '⊞' : pos === 'bottom' ? '⊟' : '≡'}
+                <span className="text-base leading-none">✏️</span>
+                <span>Compose</span>
               </button>
-            ))}
+            )}
+
+            <div className="flex-1" />
+
+            {/* Reading pane toggle */}
+            <div className="flex items-center gap-1 border rounded-md p-0.5">
+              {(['right', 'bottom', 'none'] as const).map((pos) => (
+                <button
+                  key={pos}
+                  onClick={() => setReadingPane(pos)}
+                  title={{ right: 'Reading pane right', bottom: 'Reading pane bottom', none: 'List only' }[pos]}
+                  className={`px-2 py-1 text-xs rounded transition-colors ${
+                    readingPane === pos ? 'bg-primary text-primary-foreground' : 'hover:bg-muted'
+                  }`}
+                >
+                  {pos === 'right' ? '⊞' : pos === 'bottom' ? '⊟' : '≡'}
+                </button>
+              ))}
+            </div>
+
+            {/* Fullscreen toggle */}
+            <ToolbarButton
+              onClick={toggleFullscreen}
+              title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Enter fullscreen'}
+              active={isFullscreen}
+            >
+              <IconFullscreen exit={isFullscreen} />
+            </ToolbarButton>
+
+            {/* Collapse toolbar */}
+            <ToolbarButton
+              onClick={() => setToolbarCollapsed(true)}
+              title="Hide toolbar (hover top edge to restore)"
+            >
+              <IconHideBar />
+            </ToolbarButton>
           </div>
-        </div>
+        )}
+
+        {/* Ghost restore zone when toolbar is hidden — hover near top to see floating bar */}
+        {toolbarCollapsed && (
+          <FloatingRestoreBar
+            onRestore={() => setToolbarCollapsed(false)}
+            onFullscreen={toggleFullscreen}
+            isFullscreen={isFullscreen}
+          />
+        )}
 
         {/* Feed tabs */}
         {hasAccounts && <FeedTabs />}

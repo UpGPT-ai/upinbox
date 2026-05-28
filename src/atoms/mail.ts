@@ -127,6 +127,12 @@ export const sidebarCollapsedAtom = atomWithStorage<boolean>(
   false
 );
 
+/** Top toolbar collapsed (persisted) — hides the h-11 toolbar row for more email space */
+export const toolbarCollapsedAtom = atomWithStorage<boolean>(
+  'upinbox:toolbarCollapsed',
+  false
+);
+
 /** Reading pane position: 'right' | 'bottom' | 'none' (list only) */
 export const readingPanePositionAtom = atomWithStorage<'right' | 'bottom' | 'none'>(
   'upinbox:readingPane',
