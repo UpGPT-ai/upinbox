@@ -102,6 +102,11 @@ function parseEmailId(id: string): { uid: number; mailboxPath: string } {
   return { uid, mailboxPath };
 }
 
+/** Normalize loopback addresses to ::1 (IPv6) since IPv4 loopback may be firewalled */
+function loopbackHost(host: string): string {
+  return (host === '127.0.0.1' || host === 'localhost') ? '::1' : host;
+}
+
 // ─── IMAP Provider ────────────────────────────────────────────────────────────
 
 export class ImapProvider implements MailProvider {
@@ -142,11 +147,14 @@ export class ImapProvider implements MailProvider {
     }
 
     // For loopback connections (same-server mail), skip hostname verification
-    // since the TLS cert is issued for the public hostname, not 127.0.0.1.
-    const isLoopback = creds.imapHost === '127.0.0.1' || creds.imapHost === 'localhost';
+    // since the TLS cert is issued for the public hostname, not the loopback address.
+    // Prefer ::1 (IPv6) over 127.0.0.1 (IPv4) for loopback — on some servers IPv4
+    // loopback to IMAP port is blocked while IPv6 loopback is open.
+    const imapHost = loopbackHost(creds.imapHost);
+    const isLoopback = imapHost === '::1' || imapHost === '127.0.0.1' || imapHost === 'localhost';
 
     const client = new ImapFlow({
-      host: creds.imapHost,
+      host: imapHost,
       port: creds.imapPort,
       secure: creds.imapTls,
       auth,
@@ -313,7 +321,7 @@ export class ImapProvider implements MailProvider {
 
     // Build MIME message using nodemailer's compile step (no send)
     const transport = createTransport({
-      host: creds.smtpHost,
+      host: loopbackHost(creds.smtpHost ?? creds.imapHost),
       port: creds.smtpPort,
       secure: creds.smtpTls,
       auth: creds.type === 'oauth_imap'
@@ -365,7 +373,7 @@ export class ImapProvider implements MailProvider {
     if (!email) throw new Error(`Draft not found: ${submission.emailId}`);
 
     const transport = createTransport({
-      host: creds.smtpHost,
+      host: loopbackHost(creds.smtpHost ?? creds.imapHost),
       port: creds.smtpPort,
       secure: creds.smtpTls,
       auth: creds.type === 'oauth_imap'
@@ -404,7 +412,7 @@ export class ImapProvider implements MailProvider {
     const creds = this.credentials;
 
     const transport = createTransport({
-      host: creds.smtpHost,
+      host: loopbackHost(creds.smtpHost ?? creds.imapHost),
       port: creds.smtpPort,
       secure: creds.smtpTls ?? true,
       auth: creds.type === 'oauth_imap'
