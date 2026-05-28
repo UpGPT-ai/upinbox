@@ -17,10 +17,12 @@ import {
   sidebarCollapsedAtom,
   showConnectWizardAtom,
   composeDraftAtom,
+  unifiedInboxAtom,
 } from '@/atoms/mail';
 import { useAccounts } from '@/hooks/use-accounts';
 import { MailSidebar } from '@/components/layout/sidebar';
 import { EmailList } from '@/components/mail/email-list';
+import { UnifiedEmailList } from '@/components/mail/unified-email-list';
 import { EmailDetail } from '@/components/mail/email-detail';
 import { FeedTabs, activeFeedAtom } from '@/components/screener/feed-tabs';
 import { FeedEmailList } from '@/components/screener/feed-email-list';
@@ -79,6 +81,7 @@ export function InboxLayout() {
   const [showConnectWizard] = useAtom(showConnectWizardAtom);
   const [, setComposeDraft] = useAtom(composeDraftAtom);
   const [activeFeed] = useAtom(activeFeedAtom);
+  const [unified] = useAtom(unifiedInboxAtom);
   const { data: accounts = [], isLoading } = useAccounts();
 
   const hasAccounts = accounts.length > 0;
@@ -90,6 +93,7 @@ export function InboxLayout() {
     if (activeFeed !== 'inbox') {
       return <FeedEmailList feed={activeFeed as FeedType} />;
     }
+    if (unified) return <UnifiedEmailList />;
     return activeMailboxId ? <EmailList mailboxId={activeMailboxId} /> : null;
   };
 
