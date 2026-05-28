@@ -14,8 +14,10 @@ import {
   searchFiltersAtom,
   isSearchActiveAtom,
   sortDirAtom,
+  activeAccountIdAtom,
 } from '@/atoms/mail';
 import { useEmails, useEmailMutations } from '@/hooks/use-emails';
+import { useMailboxes } from '@/hooks/use-mailboxes';
 import type { JmapEmail } from '@/lib/mail/types';
 import type { SearchFilters } from '@/atoms/mail';
 
@@ -157,55 +159,130 @@ function SearchBar() {
   );
 }
 
-// ─── Bulk Action Bar ──────────────────────────────────────────────────────────
+// ─── List Header (master checkbox + count + bulk actions) ─────────────────────
 
-interface BulkActionBarProps {
+const TRASH_ROLES = new Set(['trash', 'junk', 'spam']);
+
+interface ListHeaderProps {
   selectedIds: Set<string>;
   allEmails: JmapEmail[];
+  mailboxRole: string | null;
+  mailboxName: string;
   onClear: () => void;
   onSelectAll: () => void;
 }
 
-function BulkActionBar({ selectedIds, allEmails, onClear, onSelectAll }: BulkActionBarProps) {
+function ListHeader({ selectedIds, allEmails, mailboxRole, mailboxName, onClear, onSelectAll }: ListHeaderProps) {
   const { bulkDelete, bulkMarkRead, bulkFlag } = useEmailMutations();
   const ids = [...selectedIds];
   const count = ids.length;
-  const allSelected = count === allEmails.length;
-
+  const total = allEmails.length;
+  const allSelected = total > 0 && count === total;
+  const partialSelected = count > 0 && !allSelected;
+  const anySelected = count > 0;
   const isPending = bulkDelete.isPending || bulkMarkRead.isPending || bulkFlag.isPending;
+  const isTrashLike = mailboxRole && TRASH_ROLES.has(mailboxRole);
 
-  const run = async (fn: () => Promise<void>) => {
-    await fn();
+  const run = async (fn: () => Promise<void>) => { await fn(); onClear(); };
+
+  const handleMasterCheck = () => {
+    if (allSelected) onClear();
+    else onSelectAll();
+  };
+
+  const handleEmptyFolder = async () => {
+    if (total === 0) return;
+    const label = isTrashLike ? `Empty ${mailboxName}` : `Delete all ${total} emails`;
+    const msg = isTrashLike
+      ? `Permanently delete all ${total} emails in ${mailboxName}? This cannot be undone.`
+      : `Move all ${total} emails in ${mailboxName} to Trash?`;
+    if (!window.confirm(msg)) return;
+    onSelectAll();
+    await bulkDelete.mutateAsync(allEmails.map(e => e.id));
     onClear();
   };
 
   return (
-    <div className="flex items-center gap-2 px-3 py-2 bg-primary/5 border-b border-primary/20 text-sm flex-shrink-0">
-      <span className="font-medium text-primary tabular-nums">{count}</span>
-      <span className="text-muted-foreground">selected</span>
+    <div className={`flex items-center gap-2 px-3 py-2 border-b flex-shrink-0 text-sm ${
+      anySelected ? 'bg-primary/5 border-primary/20' : 'bg-muted/20'
+    }`}>
+      {/* Master checkbox */}
       <button
-        onClick={allSelected ? onClear : onSelectAll}
-        className="text-xs text-primary hover:underline ml-1"
-        disabled={isPending}
+        onClick={handleMasterCheck}
+        disabled={total === 0 || isPending}
+        title={allSelected ? 'Deselect all' : 'Select all'}
+        className="w-4 h-4 flex-shrink-0 flex items-center justify-center disabled:opacity-40"
       >
-        {allSelected ? 'Deselect all' : `Select all ${allEmails.length}`}
+        <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+          allSelected
+            ? 'bg-primary border-primary'
+            : partialSelected
+            ? 'bg-primary/30 border-primary'
+            : 'border-muted-foreground/40 hover:border-primary'
+        }`}>
+          {allSelected && (
+            <svg className="w-2.5 h-2.5 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+            </svg>
+          )}
+          {partialSelected && (
+            <div className="w-2 h-0.5 bg-primary rounded" />
+          )}
+        </div>
       </button>
-      <div className="w-px h-4 bg-border mx-1" />
-      <ActionBtn label="Delete" icon="🗑" pending={bulkDelete.isPending} disabled={isPending}
-        onClick={() => run(() => bulkDelete.mutateAsync(ids))} danger />
-      <ActionBtn label="Mark read" icon="✉" pending={false} disabled={isPending}
-        onClick={() => run(() => bulkMarkRead.mutateAsync({ emailIds: ids, read: true }))} />
-      <ActionBtn label="Mark unread" icon="✉̈" pending={false} disabled={isPending}
-        onClick={() => run(() => bulkMarkRead.mutateAsync({ emailIds: ids, read: false }))} />
-      <ActionBtn label="Flag" icon="⭐" pending={false} disabled={isPending}
-        onClick={() => run(() => bulkFlag.mutateAsync({ emailIds: ids, flagged: true }))} />
-      <ActionBtn label="Unflag" icon="☆" pending={false} disabled={isPending}
-        onClick={() => run(() => bulkFlag.mutateAsync({ emailIds: ids, flagged: false }))} />
-      <div className="flex-1" />
-      <button onClick={onClear} disabled={isPending}
-        className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors" title="Clear selection">
-        ✕
-      </button>
+
+      {anySelected ? (
+        /* ── Selection mode ── */
+        <>
+          <span className="font-medium text-primary tabular-nums">{count}</span>
+          <span className="text-muted-foreground">of {total} selected</span>
+          {!allSelected && (
+            <button onClick={onSelectAll} disabled={isPending}
+              className="text-xs text-primary hover:underline">
+              Select all
+            </button>
+          )}
+          <div className="w-px h-4 bg-border mx-1" />
+          <ActionBtn label="Delete" icon="🗑" pending={bulkDelete.isPending} disabled={isPending}
+            onClick={() => run(() => bulkDelete.mutateAsync(ids))} danger />
+          <ActionBtn label="Read" icon="✉" pending={false} disabled={isPending}
+            onClick={() => run(() => bulkMarkRead.mutateAsync({ emailIds: ids, read: true }))} />
+          <ActionBtn label="Unread" icon="✉̈" pending={false} disabled={isPending}
+            onClick={() => run(() => bulkMarkRead.mutateAsync({ emailIds: ids, read: false }))} />
+          <ActionBtn label="Flag" icon="⭐" pending={false} disabled={isPending}
+            onClick={() => run(() => bulkFlag.mutateAsync({ emailIds: ids, flagged: true }))} />
+          <ActionBtn label="Unflag" icon="☆" pending={false} disabled={isPending}
+            onClick={() => run(() => bulkFlag.mutateAsync({ emailIds: ids, flagged: false }))} />
+          <div className="flex-1" />
+          <button onClick={onClear} disabled={isPending}
+            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground" title="Clear selection">
+            ✕
+          </button>
+        </>
+      ) : (
+        /* ── Normal mode ── */
+        <>
+          <span className="text-muted-foreground tabular-nums">
+            {total === 0 ? 'No emails' : `${total} email${total === 1 ? '' : 's'}`}
+          </span>
+          <div className="flex-1" />
+          {total > 0 && (
+            <button
+              onClick={handleEmptyFolder}
+              disabled={isPending || bulkDelete.isPending}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors disabled:opacity-50 ${
+                isTrashLike
+                  ? 'text-destructive hover:bg-destructive/10'
+                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+              }`}
+              title={isTrashLike ? `Empty ${mailboxName}` : `Delete all emails in ${mailboxName}`}
+            >
+              <span>🗑</span>
+              <span>{isTrashLike ? 'Empty folder' : 'Delete all'}</span>
+            </button>
+          )}
+        </>
+      )}
     </div>
   );
 }
@@ -303,9 +380,14 @@ interface EmailListProps {
 export function EmailList({ mailboxId }: EmailListProps) {
   const [openEmailId, setOpenEmailId] = useAtom(openEmailIdAtom);
   const [selectedIds, setSelectedIds] = useAtom(selectedEmailIdsAtom);
+  const [accountId] = useAtom(activeAccountIdAtom);
   const { data, isLoading, isError } = useEmails(mailboxId);
+  const { data: mailboxes = [] } = useMailboxes(accountId);
 
   const emails = data?.emails ?? [];
+  const mailbox = mailboxes.find((m) => m.id === mailboxId);
+  const mailboxRole = mailbox?.role ?? null;
+  const mailboxName = mailbox?.name ?? 'folder';
 
   const handleSelect = (emailId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -325,11 +407,13 @@ export function EmailList({ mailboxId }: EmailListProps) {
       {/* Search + Sort bar */}
       <SearchBar />
 
-      {/* Bulk action bar */}
-      {selectedIds.size > 0 && (
-        <BulkActionBar
+      {/* List header: master checkbox + count + bulk actions / empty folder */}
+      {!isLoading && !isError && (
+        <ListHeader
           selectedIds={selectedIds}
           allEmails={emails}
+          mailboxRole={mailboxRole}
+          mailboxName={mailboxName}
           onClear={clearSelection}
           onSelectAll={selectAll}
         />
