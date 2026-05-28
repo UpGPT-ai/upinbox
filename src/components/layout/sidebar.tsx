@@ -142,8 +142,9 @@ function AccountDropdown({
         <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-popover border rounded-lg shadow-lg py-1 overflow-hidden">
           <div className="px-2 py-1">
             <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-1 mb-1">
-              Accounts
+              Accounts ({accounts.length})
             </p>
+            <div className="max-h-64 overflow-y-auto">
             {accounts.map((account) => (
               <button
                 key={account.id}
@@ -169,6 +170,7 @@ function AccountDropdown({
                 )}
               </button>
             ))}
+            </div>
           </div>
 
           <div className="border-t my-1" />
@@ -194,6 +196,7 @@ function AccountDropdown({
 
 function MailboxItem({ mailbox }: { mailbox: JmapMailbox }) {
   const [activeMailboxId, setActiveMailboxId] = useAtom(activeMailboxIdAtom);
+  const [, setUnified] = useAtom(unifiedInboxAtom);
   const isActive = activeMailboxId === mailbox.id;
 
   const role = mailbox.role ?? '';
@@ -201,7 +204,10 @@ function MailboxItem({ mailbox }: { mailbox: JmapMailbox }) {
 
   return (
     <button
-      onClick={() => setActiveMailboxId(mailbox.id)}
+      onClick={() => {
+        setUnified(false);
+        setActiveMailboxId(mailbox.id);
+      }}
       className={`
         w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm
         transition-colors text-left
@@ -230,8 +236,10 @@ function MailboxItem({ mailbox }: { mailbox: JmapMailbox }) {
 
 // ─── Account section (mailbox list) ──────────────────────────────────────────
 
-function AccountSection({ accountId }: { accountId: string }) {
+function AccountSection({ accountId, showAllAccounts }: { accountId: string; showAllAccounts: boolean }) {
   const { data: mailboxes = [], isLoading } = useMailboxes(accountId);
+  const [unified, setUnified] = useAtom(unifiedInboxAtom);
+  const [, setActiveMailboxId] = useAtom(activeMailboxIdAtom);
 
   if (isLoading) {
     return (
@@ -253,6 +261,29 @@ function AccountSection({ accountId }: { accountId: string }) {
 
   return (
     <div className="space-y-0.5 px-2">
+      {/* SHOW ALL — only when multiple accounts exist */}
+      {showAllAccounts && (
+        <>
+          <button
+            onClick={() => {
+              setUnified(true);
+              setActiveMailboxId(null);
+            }}
+            className={`
+              w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm transition-colors text-left
+              ${unified
+                ? 'bg-primary text-primary-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+              }
+            `}
+          >
+            <span className="text-sm leading-none w-4 text-center flex-shrink-0">📬</span>
+            <span className="flex-1 font-medium">Show All</span>
+          </button>
+          <div className="my-1 border-t border-border/50" />
+        </>
+      )}
+
       {sorted.map((mb, idx) => (
         <div key={mb.id}>
           {idx === firstBottomIdx && firstBottomIdx > 0 && (
@@ -333,28 +364,14 @@ export function MailSidebar() {
         )}
       </div>
 
-      {/* All Inboxes + per-account mailboxes */}
+      {/* Mailbox list — always visible. Show All is the first item when multiple accounts exist */}
       <div className="flex-1 overflow-y-auto py-2">
-        {/* Unified inbox shortcut */}
-        {accounts.length > 1 && (
-          <div className="px-2 mb-1">
-            <button
-              onClick={() => setUnified((v) => !v)}
-              className={`
-                w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm transition-colors text-left
-                ${unified
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-                }
-              `}
-            >
-              <span className="text-sm leading-none w-4 text-center flex-shrink-0">📬</span>
-              <span className="flex-1 truncate">All Inboxes</span>
-            </button>
-            {unified && <div className="my-1 border-t border-border/50" />}
-          </div>
+        {activeAccountId && (
+          <AccountSection
+            accountId={activeAccountId}
+            showAllAccounts={accounts.length > 1}
+          />
         )}
-        {!unified && activeAccountId && <AccountSection accountId={activeAccountId} />}
       </div>
     </div>
   );
