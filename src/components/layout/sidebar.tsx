@@ -271,10 +271,8 @@ function MailboxItem({ mailbox }: { mailbox: JmapMailbox }) {
 
 // ─── Account section (mailbox list) ──────────────────────────────────────────
 
-function AccountSection({ accountId, showAllAccounts }: { accountId: string; showAllAccounts: boolean }) {
+function AccountSection({ accountId }: { accountId: string }) {
   const { data: mailboxes = [], isLoading } = useMailboxes(accountId);
-  const [unified, setUnified] = useAtom(unifiedInboxAtom);
-  const [, setActiveMailboxId] = useAtom(activeMailboxIdAtom);
 
   if (isLoading) {
     return (
@@ -296,29 +294,6 @@ function AccountSection({ accountId, showAllAccounts }: { accountId: string; sho
 
   return (
     <div className="space-y-0.5 px-2">
-      {/* SHOW ALL — only when multiple accounts exist */}
-      {showAllAccounts && (
-        <>
-          <button
-            onClick={() => {
-              setUnified(true);
-              setActiveMailboxId(null);
-            }}
-            className={`
-              w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm transition-colors text-left
-              ${unified
-                ? 'bg-primary text-primary-foreground'
-                : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
-              }
-            `}
-          >
-            <span className="text-sm leading-none w-4 text-center flex-shrink-0">📬</span>
-            <span className="flex-1 font-medium">Show All</span>
-          </button>
-          <div className="my-1 border-t border-border/50" />
-        </>
-      )}
-
       {sorted.map((mb, idx) => (
         <div key={mb.id}>
           {idx === firstBottomIdx && firstBottomIdx > 0 && (
@@ -404,10 +379,7 @@ export function MailSidebar() {
       {/* Mailbox list — always visible. Show All is the first item when multiple accounts exist */}
       <div className="flex-1 overflow-y-auto py-2">
         {activeAccountId && (
-          <AccountSection
-            accountId={activeAccountId}
-            showAllAccounts={accounts.length > 1}
-          />
+          <AccountSection accountId={activeAccountId} />
         )}
       </div>
     </div>
