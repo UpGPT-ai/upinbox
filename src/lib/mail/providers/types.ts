@@ -42,12 +42,22 @@ export interface MailProvider {
     /** Legacy offset alias */
     offset?: number;
     sort?: 'asc' | 'desc' | Array<{ property: string; isAscending: boolean }>;
+    /** Sort direction shorthand */
+    sortDir?: 'asc' | 'desc';
     /** Upper-bound date filter */
     before?: Date;
+    /** Lower-bound date filter */
+    since?: Date;
     /** Filter by keyword presence/absence (e.g. { '$seen': false }) */
     hasKeyword?: Record<string, boolean>;
     /** Free-text search — passed to JMAP text filter or IMAP SEARCH */
     search?: string;
+    /** Filter by sender email/name */
+    from?: string;
+    /** Filter by subject text */
+    subject?: string;
+    /** Client-side attachment filter (applied after server fetch) */
+    hasAttachment?: boolean;
   }): Promise<{ ids: string[]; total: number }>;
 
   getEmails(ids: string[], properties?: string[]): Promise<JmapEmail[]>;

@@ -104,7 +104,7 @@ async function handleIssue(request: NextRequest) {
 
   // Log to DB for audit trail
   const supabase = createServiceSupabaseClient();
-  await (supabase as any).from('upinbox.issued_licenses').insert({
+  await (supabase as any).schema('upinbox').from('issued_licenses').insert({
     tier,
     max_users: maxUsers,
     instance_domain: instanceDomain,

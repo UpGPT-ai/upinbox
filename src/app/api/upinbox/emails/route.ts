@@ -60,14 +60,20 @@ export async function GET(request: NextRequest) {
   const page = parseInt(params.get('page') ?? '0', 10);
   const filter = (params.get('filter') ?? 'all') as 'all' | 'unread' | 'flagged';
   const before = params.get('before') ?? undefined;
+  const after = params.get('after') ?? undefined;
   const mailboxId = params.get('mailboxId') ?? undefined;
   const specificIds = params.get('ids')?.split(',').filter(Boolean);
+  const search = params.get('search') ?? undefined;
+  const fromSearch = params.get('from') ?? undefined;
+  const subjectSearch = params.get('subject') ?? undefined;
+  const sortDir = (params.get('sortDir') ?? 'desc') as 'asc' | 'desc';
+  const hasAttachmentParam = params.get('hasAttachment') === 'true';
 
   const supabase = await createServerSupabaseClient();
 
   // Verify account ownership (RLS)
   const { data: account, error: accountError } = await (supabase as any)
-    .from('upinbox.accounts')
+    .schema('upinbox').from('accounts')
     .select('*')
     .eq('id', accountId)
     .eq('user_id', user.id)
@@ -94,11 +100,15 @@ export async function GET(request: NextRequest) {
     // Query email IDs
     const { ids, total } = await provider.queryEmails({
       mailboxId,
-      limit,
+      limit: hasAttachmentParam ? limit * 3 : limit,  // fetch more when filtering by attachment
       position: page * limit,
       before: before ? new Date(before) : undefined,
+      since: after ? new Date(after) : undefined,
       hasKeyword: Object.keys(hasKeyword).length > 0 ? hasKeyword : undefined,
-      sort: [{ property: 'receivedAt', isAscending: false }],
+      sortDir,
+      search,
+      from: fromSearch,
+      subject: subjectSearch,
     });
 
     if (ids.length === 0) {
@@ -106,7 +116,14 @@ export async function GET(request: NextRequest) {
     }
 
     // Fetch email headers for the page
-    const emails = await provider.getEmails(ids, LIST_PROPERTIES);
+    let emails = await provider.getEmails(ids, LIST_PROPERTIES);
+
+    // Client-side attachment filter (IMAP has no standard has-attachment search)
+    if (hasAttachmentParam) {
+      emails = emails.filter((e) => e.hasAttachment);
+      // Trim to requested limit after filtering
+      emails = emails.slice(0, limit);
+    }
 
     return NextResponse.json({
       emails,

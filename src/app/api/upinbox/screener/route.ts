@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
 async function getRules(userId: string) {
   const supabase = await createServerSupabaseClient();
   const { data: rules, error } = await (supabase as any)
-    .from('upinbox.screener_rules')
+    .schema('upinbox').from('screener_rules')
     .select('*')
     .eq('user_id', userId)
     .order('priority', { ascending: true });
@@ -56,7 +56,7 @@ async function getRules(userId: string) {
   if (!rules || rules.length === 0) {
     await seedDefaultRulesInternal(userId);
     const { data: seeded } = await (supabase as any)
-      .from('upinbox.screener_rules')
+      .schema('upinbox').from('screener_rules')
       .select('*')
       .eq('user_id', userId)
       .order('priority', { ascending: true });
@@ -95,7 +95,7 @@ async function getFeed(request: NextRequest, userId: string) {
   // Fetch triage results for this account with matching categories
   type TriageRow = { email_id: string; category: string; confidence: number; classified_at: string };
   const { data: triageResults } = await (supabase as any)
-    .from('upinbox.triage_results')
+    .schema('upinbox').from('triage_results')
     .select('email_id, category, confidence, classified_at')
     .eq('user_id', userId)
     .eq('account_id', accountId)
@@ -109,7 +109,7 @@ async function getFeed(request: NextRequest, userId: string) {
 
   // Fetch the actual emails from the provider
   const { data: account } = await (supabase as any)
-    .from('upinbox.accounts')
+    .schema('upinbox').from('accounts')
     .select('*')
     .eq('id', accountId)
     .eq('user_id', userId)
@@ -175,7 +175,7 @@ async function processEmailBatch(request: NextRequest, userId: string) {
 
   // Verify account
   const { data: account } = await (supabase as any)
-    .from('upinbox.accounts')
+    .schema('upinbox').from('accounts')
     .select('*')
     .eq('id', accountId)
     .eq('user_id', userId)
@@ -185,7 +185,7 @@ async function processEmailBatch(request: NextRequest, userId: string) {
 
   // Load screener rules
   const { data: rules } = await (supabase as any)
-    .from('upinbox.screener_rules')
+    .schema('upinbox').from('screener_rules')
     .select('*')
     .eq('user_id', userId)
     .eq('enabled', true)
@@ -194,7 +194,7 @@ async function processEmailBatch(request: NextRequest, userId: string) {
   // Fetch triage results for these emails (classified separately)
   type TriageRow2 = { email_id: string; category: string; confidence: number; signals: unknown };
   const { data: triageResults } = await (supabase as any)
-    .from('upinbox.triage_results')
+    .schema('upinbox').from('triage_results')
     .select('email_id, category, confidence, signals')
     .eq('user_id', userId)
     .eq('account_id', accountId)
@@ -231,7 +231,7 @@ async function processEmailBatch(request: NextRequest, userId: string) {
 
   // Store screener decisions in DB
   if (results.length > 0) {
-    await (supabase as any).from('upinbox.screener_decisions').upsert(
+    await (supabase as any).schema('upinbox').from('screener_decisions').upsert(
       results.map((r) => ({
         user_id: userId,
         account_id: accountId,
@@ -256,7 +256,7 @@ async function seedDefaultRules(userId: string) {
 
 async function seedDefaultRulesInternal(userId: string) {
   const supabase = await createServerSupabaseClient();
-  await (supabase as any).from('upinbox.screener_rules').insert(
+  await (supabase as any).schema('upinbox').from('screener_rules').insert(
     DEFAULT_SCREENER_RULES.map((rule) => ({
       ...rule,
       user_id: userId,
@@ -298,7 +298,7 @@ async function upsertRules(request: NextRequest, userId: string) {
   }));
 
   const { data, error } = await (supabase as any)
-    .from('upinbox.screener_rules')
+    .schema('upinbox').from('screener_rules')
     .upsert(upsertData, { onConflict: 'id' })
     .select('*');
 

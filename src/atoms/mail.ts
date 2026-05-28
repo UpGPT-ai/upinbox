@@ -43,6 +43,46 @@ export const selectedCountAtom = atom(
   (get) => get(selectedEmailIdsAtom).size
 );
 
+// ─── Search & Sort ────────────────────────────────────────────────────────────
+
+export type SortDir = 'asc' | 'desc';
+
+/** Sort direction for the email list */
+export const sortDirAtom = atomWithStorage<SortDir>('upinbox:sortDir', 'desc');
+
+export interface SearchFilters {
+  /** Full-text search */
+  query: string;
+  /** Filter by sender email or name */
+  from: string;
+  /** Filter by subject */
+  subject: string;
+  /** Emails received after this date (yyyy-mm-dd) */
+  after: string;
+  /** Emails received before this date (yyyy-mm-dd) */
+  before: string;
+  /** Only show emails with attachments */
+  hasAttachment: boolean;
+}
+
+const DEFAULT_SEARCH: SearchFilters = {
+  query: '',
+  from: '',
+  subject: '',
+  after: '',
+  before: '',
+  hasAttachment: false,
+};
+
+/** Current search filter state — resets when user clears search */
+export const searchFiltersAtom = atom<SearchFilters>(DEFAULT_SEARCH);
+
+/** True when any search filter is non-default */
+export const isSearchActiveAtom = atom((get) => {
+  const f = get(searchFiltersAtom);
+  return !!(f.query || f.from || f.subject || f.after || f.before || f.hasAttachment);
+});
+
 // ─── Compose state ────────────────────────────────────────────────────────────
 
 export type ComposeMode = 'closed' | 'new' | 'reply' | 'reply-all' | 'forward';

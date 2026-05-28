@@ -41,7 +41,7 @@ async function getAccountAndProvider(userId: string, accountId: string | null) {
 
   const supabase = await createServerSupabaseClient();
   const { data: account, error } = await (supabase as any)
-    .from('upinbox.accounts')
+    .schema('upinbox').from('accounts')
     .select('*')
     .eq('id', accountId)
     .eq('user_id', userId)

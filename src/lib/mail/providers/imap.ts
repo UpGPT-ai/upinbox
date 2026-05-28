@@ -30,6 +30,17 @@ type ImapFlowOptions = import('imapflow').ImapFlowOptions;
 
 // ─── Known IMAP Folder → Role Mapping ─────────────────────────────────────────
 
+// Maps IMAP special-use attributes → JMAP roles (RFC 6154)
+const SPECIAL_USE_TO_ROLE: Record<string, JmapMailbox['role']> = {
+  '\\Inbox':   'inbox',
+  '\\Sent':    'sent',
+  '\\Drafts':  'drafts',
+  '\\Trash':   'trash',
+  '\\Junk':    'spam',
+  '\\Archive': 'archive',
+  '\\Flagged': null,
+};
+
 const ROLE_MAP: Record<string, JmapMailbox['role']> = {
   // Standard
   inbox: 'inbox',
@@ -44,6 +55,7 @@ const ROLE_MAP: Record<string, JmapMailbox['role']> = {
   junk: 'spam',
   spam: 'spam',
   'junk email': 'spam',
+  'junk e-mail': 'spam',
   archive: 'archive',
   // Gmail-specific
   '[gmail]/sent mail': 'sent',
@@ -55,9 +67,25 @@ const ROLE_MAP: Record<string, JmapMailbox['role']> = {
   'sentitems': 'sent',
   'deleteditems': 'trash',
   'junkemail': 'spam',
+  // Dovecot INBOX.* hierarchy (CyberPanel, cPanel, etc.)
+  'inbox.sent': 'sent',
+  'inbox.sent items': 'sent',
+  'inbox.sent mail': 'sent',
+  'inbox.drafts': 'drafts',
+  'inbox.trash': 'trash',
+  'inbox.deleted items': 'trash',
+  'inbox.deleted messages': 'trash',
+  'inbox.junk': 'spam',
+  'inbox.junk e-mail': 'spam',
+  'inbox.spam': 'spam',
+  'inbox.archive': 'archive',
 };
 
-function guessRole(path: string): JmapMailbox['role'] {
+function guessRole(path: string, specialUse?: string): JmapMailbox['role'] {
+  // Prefer RFC 6154 special-use attribute (server-authoritative)
+  if (specialUse && specialUse in SPECIAL_USE_TO_ROLE) {
+    return SPECIAL_USE_TO_ROLE[specialUse];
+  }
   return ROLE_MAP[path.toLowerCase()] ?? null;
 }
 
@@ -113,12 +141,17 @@ export class ImapProvider implements MailProvider {
       auth = { user: creds.username, pass: creds.password };
     }
 
+    // For loopback connections (same-server mail), skip hostname verification
+    // since the TLS cert is issued for the public hostname, not 127.0.0.1.
+    const isLoopback = creds.imapHost === '127.0.0.1' || creds.imapHost === 'localhost';
+
     const client = new ImapFlow({
       host: creds.imapHost,
       port: creds.imapPort,
       secure: creds.imapTls,
       auth,
       logger: false, // suppress verbose imapflow logging
+      tls: isLoopback ? { rejectUnauthorized: false } : undefined,
     });
 
     await client.connect();
@@ -135,22 +168,26 @@ export class ImapProvider implements MailProvider {
 
       function flatten(node: import('imapflow').ListTreeResponse, parentId: string | null = null) {
         const id = node.path ?? '';
-        const role = guessRole(node.path ?? '');
 
-        // Try to get counts — requires SELECT, which we skip for listing speed
-        mailboxes.push({
-          id,
-          name: node.name ?? id,
-          role,
-          totalEmails: 0,   // filled lazily on select
-          unreadEmails: 0,
-          parentId,
-          sortOrder: role === 'inbox' ? 0 : mailboxes.length + 1,
-          isSubscribed: node.subscribed ?? true,
-        });
+        // Skip the synthetic root node that listTree() emits (path is undefined/empty)
+        if (id) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const specialUse: string | undefined = (node as any).specialUse;
+          const role = guessRole(id, specialUse);
+          mailboxes.push({
+            id,
+            name: node.name ?? id,
+            role,
+            totalEmails: 0,   // filled lazily on select
+            unreadEmails: 0,
+            parentId,
+            sortOrder: role === 'inbox' ? 0 : mailboxes.length + 1,
+            isSubscribed: node.subscribed ?? true,
+          });
+        }
 
         for (const child of node.folders ?? []) {
-          flatten(child, id);
+          flatten(child, id || null);
         }
       }
 
@@ -169,6 +206,11 @@ export class ImapProvider implements MailProvider {
     position?: number;
     offset?: number;
     sort?: 'asc' | 'desc' | Array<{ property: string; isAscending: boolean }>;
+    sortDir?: 'asc' | 'desc';
+    since?: Date;
+    from?: string;
+    subject?: string;
+    hasAttachment?: boolean;
     before?: Date;
     hasKeyword?: Record<string, boolean>;
     search?: string;
@@ -178,17 +220,23 @@ export class ImapProvider implements MailProvider {
     try {
       const lock = await client.getMailboxLock(mailbox);
       try {
-        const criteria = opts.search
-          ? { text: opts.search }
-          : { all: true };
+        // Build composite search criteria
+        const criteria: Record<string, unknown> = {};
+        const hasAny = opts.search || opts.from || opts.subject || opts.before || opts.since;
+        if (opts.search) criteria.text = opts.search;
+        if (opts.from) criteria.from = opts.from;
+        if (opts.subject) criteria.subject = opts.subject;
+        if (opts.before) criteria.before = opts.before;
+        if (opts.since) criteria.since = opts.since;
+        if (!hasAny) criteria.all = true;
 
         const rawUids = await client.search(criteria, { uid: true });
         const uids: number[] = rawUids === false ? [] : rawUids as number[];
         const total = uids.length;
 
-        // Sort: IMAP search returns ascending UIDs, reverse for newest-first
-        const sortOpt = Array.isArray(opts.sort) ? 'desc' : (opts.sort ?? 'desc');
-        const sorted = sortOpt === 'asc' ? uids : [...uids].reverse();
+        // Sort direction: opts.sortDir overrides opts.sort
+        const dir = opts.sortDir ?? (Array.isArray(opts.sort) ? 'desc' : (opts.sort ?? 'desc'));
+        const sorted = dir === 'asc' ? uids : [...uids].reverse();
         const offset = opts.position ?? opts.offset ?? 0;
         const limit = opts.limit ?? 50;
         const page = sorted.slice(offset, offset + limit);
@@ -229,7 +277,7 @@ export class ImapProvider implements MailProvider {
               flags: true,
               envelope: true,
               bodyStructure: true,
-              bodyParts: ['1', 'TEXT', 'HTML'],
+              bodyParts: ['1', 'TEXT'],  // imapflow lowercases keys → '1' and 'text'
               internalDate: true,
               size: true,
             },
@@ -338,6 +386,72 @@ export class ImapProvider implements MailProvider {
     return { id: submission.emailId, sendAt: now };
   }
 
+  /**
+   * Send an email directly via SMTP (no draft intermediate).
+   * Appends a copy to the Sent folder after sending.
+   */
+  async sendDirect(opts: {
+    to: string[];
+    cc?: string[];
+    bcc?: string[];
+    subject: string;
+    body: string;
+    isHtml?: boolean;
+    inReplyTo?: string;
+    references?: string[];
+  }): Promise<void> {
+    const { createTransport } = await import('nodemailer');
+    const creds = this.credentials;
+
+    const transport = createTransport({
+      host: creds.smtpHost,
+      port: creds.smtpPort,
+      secure: creds.smtpTls ?? true,
+      auth: creds.type === 'oauth_imap'
+        ? { type: 'OAuth2', user: this.emailAddress, accessToken: creds.accessToken }
+        : { user: (creds as import('@/lib/mail/types').ImapCredentials).username, pass: (creds as import('@/lib/mail/types').ImapCredentials).password },
+    });
+
+    const mailOpts: Record<string, unknown> = {
+      from: this.emailAddress,
+      to: opts.to.join(', '),
+      subject: opts.subject,
+    };
+    if (opts.isHtml) { mailOpts.html = opts.body; } else { mailOpts.text = opts.body; }
+    if (opts.cc?.length) mailOpts.cc = opts.cc.join(', ');
+    if (opts.bcc?.length) mailOpts.bcc = opts.bcc.join(', ');
+    if (opts.inReplyTo) mailOpts.inReplyTo = opts.inReplyTo;
+    if (opts.references?.length) mailOpts.references = opts.references.join(' ');
+
+    await transport.sendMail(mailOpts);
+
+    // Append to Sent folder (non-fatal if it fails)
+    try {
+      const sentClient = await this.connect();
+      try {
+        const MailComposerMod: any = await import('nodemailer/lib/mail-composer').catch(
+          () => import('nodemailer/lib/mail-composer/index.js')
+        );
+        const MailComposer = MailComposerMod.default ?? MailComposerMod;
+        const raw: Buffer = await new Promise((resolve, reject) => {
+          new MailComposer(mailOpts).compile().build((err: Error | null, buf: Buffer) => {
+            if (err) reject(err); else resolve(buf);
+          });
+        });
+        const folders = await (sentClient as any).list('', '*') as Array<{ path: string; specialUse?: string }>;
+        const sentPath =
+          folders.find((f: { specialUse?: string }) => f.specialUse === '\\Sent')?.path ??
+          folders.find((f: { path: string }) => /^(sent|inbox\.sent)/i.test(f.path))?.path ??
+          'Sent';
+        await sentClient.append(sentPath, raw, ['\\Seen']);
+      } finally {
+        await sentClient.logout();
+      }
+    } catch (appendErr) {
+      console.warn('[UpInbox] Failed to append to Sent:', appendErr);
+    }
+  }
+
   async moveEmail(emailId: string, toMailboxId: string): Promise<void> {
     const { uid, mailboxPath } = parseEmailId(emailId);
     const client = await this.connect();
@@ -392,7 +506,27 @@ export class ImapProvider implements MailProvider {
   }
 
   async deleteEmail(emailId: string): Promise<void> {
-    await this.moveEmail(emailId, 'Trash');
+    const { uid, mailboxPath } = parseEmailId(emailId);
+    const client = await this.connect();
+    try {
+      // Discover trash folder by \Trash special-use attribute (RFC 6154)
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const folders = await (client as any).list('', '*') as Array<{ path: string; specialUse?: string }>;
+      const trashPath =
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        folders.find((f) => (f as any).specialUse === '\\Trash')?.path
+        ?? folders.find((f) => /trash|deleted.items|deleted.messages/i.test(f.path))?.path
+        ?? 'Trash';
+
+      const lock = await client.getMailboxLock(mailboxPath);
+      try {
+        await client.messageMove(uid.toString(), trashPath, { uid: true });
+      } finally {
+        lock.release();
+      }
+    } finally {
+      await client.logout();
+    }
   }
 
   async getIdentities(): Promise<JmapIdentity[]> {
@@ -430,7 +564,10 @@ function mapImapMessageToJmap(msg: any, mailboxPath: string): JmapEmail {
   }
 
   const bodyParts = msg.bodyParts as Map<string, Buffer> | undefined;
-  const bodyText = bodyParts?.get('TEXT')?.toString('utf-8') ?? '';
+  // imapflow lowercases section identifiers: '1' (part 1, clean body) or 'text' (full raw text)
+  const bodyText = bodyParts?.get('1')?.toString('utf-8')
+                ?? bodyParts?.get('text')?.toString('utf-8')
+                ?? '';
 
   return {
     id: makeEmailId(uid, mailboxPath),

@@ -47,7 +47,7 @@ export async function GET(
   // Verify CSRF state
   const supabase = await createServerSupabaseClient();
   const { data: stateRecord, error: stateError } = await (supabase as any)
-    .from('upinbox.oauth_states')
+    .schema('upinbox').from('oauth_states')
     .select('*')
     .eq('state', state)
     .eq('provider', provider)
@@ -59,7 +59,7 @@ export async function GET(
   }
 
   // Delete state (single-use)
-  await (supabase as any).from('upinbox.oauth_states').delete().eq('state', state);
+  await (supabase as any).schema('upinbox').from('oauth_states').delete().eq('state', state);
 
   const user = await getCurrentUser();
   if (!user || user.id !== stateRecord.user_id) {
@@ -130,11 +130,11 @@ export async function GET(
       // Save account
       const serviceClient = createServiceSupabaseClient();
       const { count } = await (serviceClient as any)
-        .from('upinbox.accounts')
+        .schema('upinbox').from('accounts')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id);
 
-      await (serviceClient as any).from('upinbox.accounts').insert({
+      await (serviceClient as any).schema('upinbox').from('accounts').insert({
         user_id: user.id,
         email_address: email,
         display_name: userInfo.name ?? email,
@@ -191,11 +191,11 @@ export async function GET(
       const encrypted = await encryptCredentials(credentials);
       const serviceClient = createServiceSupabaseClient();
       const { count } = await (serviceClient as any)
-        .from('upinbox.accounts')
+        .schema('upinbox').from('accounts')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id);
 
-      await (serviceClient as any).from('upinbox.accounts').insert({
+      await (serviceClient as any).schema('upinbox').from('accounts').insert({
         user_id: user.id,
         email_address: email,
         display_name: userInfo.displayName ?? email,

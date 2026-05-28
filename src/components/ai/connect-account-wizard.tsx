@@ -40,6 +40,7 @@ const IMAP_PRESETS: Record<string, { host: string; port: number; smtp_host: stri
   'fastmail.com': { host: 'imap.fastmail.com', port: 993, smtp_host: 'smtp.fastmail.com', smtp_port: 587 },
   'icloud.com': { host: 'imap.mail.me.com', port: 993, smtp_host: 'smtp.mail.me.com', smtp_port: 587 },
   'protonmail.com': { host: '127.0.0.1', port: 1143, smtp_host: '127.0.0.1', smtp_port: 1025 },
+  'upgpt.ai': { host: '127.0.0.1', port: 993, smtp_host: '127.0.0.1', smtp_port: 587 },
 };
 
 const PROVIDER_OPTIONS: { id: ProviderType; label: string; description: string; badge?: string }[] = [
@@ -47,7 +48,6 @@ const PROVIDER_OPTIONS: { id: ProviderType; label: string; description: string; 
   { id: 'outlook-oauth', label: 'Outlook / Microsoft 365', description: 'Sign in with Microsoft. Works with @outlook, @hotmail, @live, and work accounts.', badge: 'OAuth' },
   { id: 'imap', label: 'IMAP / SMTP', description: 'Fastmail, Yahoo, iCloud, Proton Bridge, or any IMAP server.' },
   { id: 'jmap', label: 'JMAP', description: 'Fastmail native JMAP, Stalwart, or any JMAP server.', badge: 'Fast' },
-  { id: 'upinbox', label: '@upinbox.ai', description: 'Create a free @upinbox.ai email address.', badge: 'Free' },
 ];
 
 export function ConnectAccountWizard() {
@@ -95,14 +95,14 @@ export function ConnectAccountWizard() {
           email_address: email,
           credentials: {
             type: 'imap',
-            host: imapHost,
-            port: imapPort,
-            secure: imapPort === 993,
+            imapHost,
+            imapPort,
+            imapTls: imapPort === 993,
             username: email,
             password,
-            smtp_host: smtpHost,
-            smtp_port: smtpPort,
-            smtp_secure: smtpPort === 465,
+            smtpHost,
+            smtpPort,
+            smtpTls: smtpPort === 465,
           },
         };
       } else if (providerType === 'jmap') {
@@ -134,7 +134,9 @@ export function ConnectAccountWizard() {
 
       if (!res.ok) {
         const data = await res.json();
-        throw new Error(data.error ?? 'Connection failed');
+        const msg = data.error ?? 'Connection failed';
+        const detail = data.detail ? `: ${data.detail}` : '';
+        throw new Error(msg + detail);
       }
 
       const data = await res.json();

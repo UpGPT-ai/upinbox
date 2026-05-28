@@ -16,6 +16,7 @@ import {
   readingPanePositionAtom,
   sidebarCollapsedAtom,
   showConnectWizardAtom,
+  composeDraftAtom,
 } from '@/atoms/mail';
 import { useAccounts } from '@/hooks/use-accounts';
 import { MailSidebar } from '@/components/layout/sidebar';
@@ -25,6 +26,7 @@ import { FeedTabs, activeFeedAtom } from '@/components/screener/feed-tabs';
 import { FeedEmailList } from '@/components/screener/feed-email-list';
 import { FocusList } from '@/components/screener/focus-list';
 import { ConnectAccountWizard } from '@/components/ai/connect-account-wizard';
+import { ComposeWindow } from '@/components/mail/compose-window';
 import type { FeedType } from '@/components/screener/feed-tabs';
 
 function EmptyState() {
@@ -75,6 +77,7 @@ export function InboxLayout() {
   const [readingPane, setReadingPane] = useAtom(readingPanePositionAtom);
   const [sidebarCollapsed, setSidebarCollapsed] = useAtom(sidebarCollapsedAtom);
   const [showConnectWizard] = useAtom(showConnectWizardAtom);
+  const [, setComposeDraft] = useAtom(composeDraftAtom);
   const [activeFeed] = useAtom(activeFeedAtom);
   const { data: accounts = [], isLoading } = useAccounts();
 
@@ -105,6 +108,24 @@ export function InboxLayout() {
           >
             {sidebarCollapsed ? '▶' : '◀'}
           </ToolbarButton>
+
+          {/* Compose button */}
+          {hasAccounts && (
+            <button
+              onClick={() => setComposeDraft({
+                mode: 'new',
+                to: [],
+                cc: [],
+                bcc: [],
+                subject: '',
+                body: '',
+              })}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+            >
+              <span className="text-base leading-none">✏️</span>
+              <span>Compose</span>
+            </button>
+          )}
 
           <div className="flex-1" />
 
@@ -161,6 +182,9 @@ export function InboxLayout() {
 
       {/* Connect wizard modal */}
       {showConnectWizard && <ConnectAccountWizard />}
+
+      {/* Compose window — fixed overlay, always rendered */}
+      <ComposeWindow />
     </div>
   );
 }

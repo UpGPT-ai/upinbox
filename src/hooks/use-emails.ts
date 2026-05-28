@@ -7,8 +7,13 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { useAtom } from 'jotai';
-import { activeAccountIdAtom, mailboxFilterAtom } from '@/atoms/mail';
+import { useAtom, useAtomValue } from 'jotai';
+import {
+  activeAccountIdAtom,
+  mailboxFilterAtom,
+  searchFiltersAtom,
+  sortDirAtom,
+} from '@/atoms/mail';
 import type { JmapEmail } from '@/lib/mail/types';
 
 export interface EmailsPage {
@@ -28,18 +33,27 @@ export function useEmails(
 ) {
   const [accountId] = useAtom(activeAccountIdAtom);
   const [filter] = useAtom(mailboxFilterAtom);
+  const search = useAtomValue(searchFiltersAtom);
+  const sortDir = useAtomValue(sortDirAtom);
 
   return useQuery({
-    queryKey: ['upinbox', 'emails', accountId, mailboxId, filter, page, limit],
+    queryKey: ['upinbox', 'emails', accountId, mailboxId, filter, search, sortDir, page, limit],
     enabled: !!accountId && !!mailboxId,
     queryFn: async (): Promise<EmailsPage> => {
       const params = new URLSearchParams({
         accountId: accountId!,
         mailboxId: mailboxId!,
         filter,
+        sortDir,
         page: String(page),
         limit: String(limit),
       });
+      if (search.query) params.set('search', search.query);
+      if (search.from) params.set('from', search.from);
+      if (search.subject) params.set('subject', search.subject);
+      if (search.after) params.set('after', search.after);
+      if (search.before) params.set('before', search.before);
+      if (search.hasAttachment) params.set('hasAttachment', 'true');
       const res = await fetch(`/api/upinbox/emails?${params}`);
       if (!res.ok) throw new Error(`Failed to fetch emails: ${res.status}`);
       return res.json();
@@ -77,6 +91,52 @@ export function useEmailMutations() {
   const invalidateEmailList = () => {
     queryClient.invalidateQueries({ queryKey: ['upinbox', 'emails'] });
   };
+
+  /** Bulk delete (trash) multiple emails in parallel */
+  const bulkDelete = useMutation({
+    mutationFn: async (emailIds: string[]) => {
+      await Promise.all(
+        emailIds.map((id) =>
+          fetch(`/api/upinbox/emails/${encodeURIComponent(id)}?accountId=${accountId}`, {
+            method: 'DELETE',
+          })
+        )
+      );
+    },
+    onSuccess: invalidateEmailList,
+  });
+
+  /** Bulk mark read/unread */
+  const bulkMarkRead = useMutation({
+    mutationFn: async ({ emailIds, read }: { emailIds: string[]; read: boolean }) => {
+      await Promise.all(
+        emailIds.map((id) =>
+          fetch(`/api/upinbox/emails/${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accountId, keywords: { '$seen': read } }),
+          })
+        )
+      );
+    },
+    onSuccess: invalidateEmailList,
+  });
+
+  /** Bulk flag/unflag */
+  const bulkFlag = useMutation({
+    mutationFn: async ({ emailIds, flagged }: { emailIds: string[]; flagged: boolean }) => {
+      await Promise.all(
+        emailIds.map((id) =>
+          fetch(`/api/upinbox/emails/${encodeURIComponent(id)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ accountId, keywords: { '$flagged': flagged } }),
+          })
+        )
+      );
+    },
+    onSuccess: invalidateEmailList,
+  });
 
   /** Mark a single email read or unread */
   const markRead = useMutation({
@@ -139,5 +199,42 @@ export function useEmailMutations() {
     onSuccess: invalidateEmailList,
   });
 
-  return { markRead, toggleFlagged, moveEmail, deleteEmail };
+  return { markRead, toggleFlagged, moveEmail, deleteEmail, bulkDelete, bulkMarkRead, bulkFlag };
+}
+
+// ─── Send email ───────────────────────────────────────────────────────────────
+
+export interface SendEmailOpts {
+  accountId: string;
+  to: string[];
+  cc?: string[];
+  bcc?: string[];
+  subject: string;
+  body: string;
+  isHtml?: boolean;
+  inReplyTo?: string;
+  references?: string[];
+}
+
+export function useSendEmail() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: async (opts: SendEmailOpts) => {
+      const res = await fetch('/api/upinbox/emails/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(opts),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail ?? err.error ?? `Send failed: ${res.status}`);
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      // Invalidate sent folder so it refreshes
+      queryClient.invalidateQueries({ queryKey: ['upinbox', 'emails'] });
+    },
+  });
 }

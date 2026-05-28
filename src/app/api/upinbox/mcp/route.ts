@@ -158,7 +158,7 @@ async function executeTool(
   // Get primary account for this user
   const getAccount = async (accountId?: string) => {
     const query = (supabase as any)
-      .from('upinbox.accounts')
+      .schema('upinbox').from('accounts')
       .select('*')
       .eq('user_id', userId);
 
@@ -176,7 +176,7 @@ async function executeTool(
   switch (name) {
     case 'list_accounts': {
       const { data } = await (supabase as any)
-        .from('upinbox.accounts')
+        .schema('upinbox').from('accounts')
         .select('id, email_address, display_name, provider_type, is_primary, sync_enabled, last_synced_at')
         .eq('user_id', userId)
         .order('is_primary', { ascending: false });
@@ -303,7 +303,7 @@ async function executeTool(
 
     case 'get_triage_result': {
       const { data } = await (supabase as any)
-        .from('upinbox.triage_results')
+        .schema('upinbox').from('triage_results')
         .select('*')
         .eq('user_id', userId)
         .eq('email_id', args.email_id as string)

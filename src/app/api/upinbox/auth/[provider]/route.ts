@@ -52,7 +52,7 @@ export async function GET(
 
   // Store state in DB so we can verify on callback
   const supabase = await createServerSupabaseClient();
-  await (supabase as any).from('upinbox.oauth_states').insert({
+  await (supabase as any).schema('upinbox').from('oauth_states').insert({
     user_id: user.id,
     state,
     provider,

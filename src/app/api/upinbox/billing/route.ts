@@ -33,7 +33,7 @@ export async function GET() {
 
   const supabase = await createServerSupabaseClient();
   const { data } = await (supabase as any)
-    .from('upinbox.subscriptions')
+    .schema('upinbox').from('subscriptions')
     .select('tier, status, current_period_end, cancel_at_period_end, stripe_customer_id')
     .eq('user_id', user.id)
     .single();
@@ -162,7 +162,7 @@ async function handleWebhook(request: NextRequest) {
 
     if (userId && plan) {
       const tier = plan.startsWith('business') ? 'business' : 'plus';
-      await (supabase as any).from('upinbox.subscriptions').upsert({
+      await (supabase as any).schema('upinbox').from('subscriptions').upsert({
         user_id: userId,
         tier,
         status: 'active',
@@ -180,7 +180,7 @@ async function handleWebhook(request: NextRequest) {
     const customerId = sub.customer as string;
 
     if (customerId) {
-      await (supabase as any).from('upinbox.subscriptions')
+      await (supabase as any).schema('upinbox').from('subscriptions')
         .update({ tier: 'free', status: 'canceled' })
         .eq('stripe_customer_id', customerId);
     }

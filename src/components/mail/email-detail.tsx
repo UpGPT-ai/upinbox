@@ -3,23 +3,23 @@
 /**
  * EmailDetail — reading pane showing the full email body.
  *
- * Renders HTML bodies in a sandboxed iframe.
- * Plain-text fallback if no HTML body.
+ * Renders HTML in a sandboxed iframe. Plain-text fallback.
+ * Reply / Reply-all / Forward wire into composeDraftAtom.
+ * Marks email as read automatically on open.
  */
 
-import { useAtom } from 'jotai';
-import { openEmailIdAtom, activeAccountIdAtom } from '@/atoms/mail';
+import { useEffect, useCallback } from 'react';
+import { useAtom, useAtomValue } from 'jotai';
+import { openEmailIdAtom, activeAccountIdAtom, composeDraftAtom } from '@/atoms/mail';
 import { useEmail, useEmailMutations } from '@/hooks/use-emails';
+import { useAccounts } from '@/hooks/use-accounts';
 import type { JmapEmail } from '@/lib/mail/types';
+import type { ComposeDraft } from '@/atoms/mail';
 
 function formatFullDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString([], {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    weekday: 'short', month: 'short', day: 'numeric',
+    year: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 }
 
@@ -44,13 +44,11 @@ function AddressList({ addresses }: { addresses: { email: string; name?: string 
 }
 
 function EmailBody({ email }: { email: JmapEmail }) {
-  // Prefer HTML body
   const htmlPart = email.htmlBody?.[0];
   const textPart = email.textBody?.[0];
 
   if (htmlPart?.partId && email.bodyValues?.[htmlPart.partId]) {
     const html = email.bodyValues[htmlPart.partId].value;
-    // Render in a sandboxed iframe — no scripts, no cross-origin requests
     return (
       <iframe
         srcDoc={`<!DOCTYPE html>
@@ -61,17 +59,13 @@ function EmailBody({ email }: { email: JmapEmail }) {
 <style>
   body {
     font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-    font-size: 14px;
-    line-height: 1.6;
-    color: #1a1a1a;
-    margin: 0;
-    padding: 16px;
-    max-width: 100%;
-    overflow-x: hidden;
+    font-size: 14px; line-height: 1.6; color: #1a1a1a;
+    margin: 0; padding: 16px; max-width: 100%; overflow-x: hidden;
   }
   img { max-width: 100%; height: auto; }
   a { color: #2563eb; }
   pre, code { white-space: pre-wrap; word-break: break-word; }
+  blockquote { border-left: 3px solid #d1d5db; margin: 0; padding-left: 12px; color: #6b7280; }
 </style>
 </head>
 <body>${html}</body>
@@ -80,7 +74,6 @@ function EmailBody({ email }: { email: JmapEmail }) {
         className="w-full border-0 flex-1"
         style={{ minHeight: '400px' }}
         onLoad={(e) => {
-          // Auto-resize iframe to content height
           const iframe = e.currentTarget;
           const height = iframe.contentDocument?.body?.scrollHeight;
           if (height) iframe.style.height = `${height + 32}px`;
@@ -90,7 +83,6 @@ function EmailBody({ email }: { email: JmapEmail }) {
     );
   }
 
-  // Plain text fallback
   if (textPart?.partId && email.bodyValues?.[textPart.partId]) {
     const text = email.bodyValues[textPart.partId].value;
     return (
@@ -101,18 +93,128 @@ function EmailBody({ email }: { email: JmapEmail }) {
   }
 
   return (
-    <div className="p-4 text-muted-foreground text-sm italic">
-      No message body
-    </div>
+    <div className="p-4 text-muted-foreground text-sm italic">No message body</div>
   );
 }
 
+// ── Build quoted body for reply / forward ─────────────────────────────────────
+
+function extractPlainText(email: JmapEmail): string {
+  const textPart = email.textBody?.[0];
+  if (textPart?.partId && email.bodyValues?.[textPart.partId]) {
+    return email.bodyValues[textPart.partId].value;
+  }
+  const htmlPart = email.htmlBody?.[0];
+  if (htmlPart?.partId && email.bodyValues?.[htmlPart.partId]) {
+    return email.bodyValues[htmlPart.partId].value
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<[^>]+>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&')
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+      .trim();
+  }
+  return '';
+}
+
+function buildReplyDraft(email: JmapEmail, mode: 'reply' | 'reply-all', identityEmail?: string): ComposeDraft {
+  const fromAddr = email.from?.[0];
+  const replyTo = [fromAddr?.email ?? ''].filter(Boolean);
+
+  let cc: string[] = [];
+  if (mode === 'reply-all') {
+    const allTo = (email.to ?? []).map((a) => a.email);
+    const allCc = (email.cc ?? []).map((a) => a.email);
+    cc = [...allTo, ...allCc].filter((e) => e !== identityEmail);
+  }
+
+  const subject = email.subject
+    ? (email.subject.startsWith('Re:') ? email.subject : `Re: ${email.subject}`)
+    : 'Re:';
+
+  const originalBody = extractPlainText(email);
+  const dateLine = email.receivedAt ? formatFullDate(email.receivedAt) : '';
+  const fromLine = fromAddr?.name
+    ? `${fromAddr.name} <${fromAddr.email}>`
+    : (fromAddr?.email ?? '');
+
+  const quotedBody = `\n\n\nOn ${dateLine}, ${fromLine} wrote:\n${
+    originalBody.split('\n').map((l) => `> ${l}`).join('\n')
+  }`;
+
+  return {
+    mode,
+    to: replyTo,
+    cc,
+    bcc: [],
+    subject,
+    body: quotedBody,
+    inReplyToId: email.messageId?.[0],
+    identityEmail,
+  };
+}
+
+function buildForwardDraft(email: JmapEmail, identityEmail?: string): ComposeDraft {
+  const subject = email.subject
+    ? (email.subject.startsWith('Fwd:') ? email.subject : `Fwd: ${email.subject}`)
+    : 'Fwd:';
+
+  const fromLine = (email.from ?? []).map((a) => a.name ? `${a.name} <${a.email}>` : a.email).join(', ');
+  const toLine = (email.to ?? []).map((a) => a.email).join(', ');
+  const dateLine = email.receivedAt ? formatFullDate(email.receivedAt) : '';
+  const originalBody = extractPlainText(email);
+
+  const body = `\n\n---------- Forwarded message ----------\nFrom: ${fromLine}\nDate: ${dateLine}\nSubject: ${email.subject ?? ''}\nTo: ${toLine}\n\n${originalBody}`;
+
+  return {
+    mode: 'forward',
+    to: [],
+    cc: [],
+    bcc: [],
+    subject,
+    body,
+    identityEmail,
+  };
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
 export function EmailDetail() {
-  const [emailId] = useAtom(openEmailIdAtom);
-  const [, setOpenEmailId] = useAtom(openEmailIdAtom);
-  const [accountId] = useAtom(activeAccountIdAtom);
+  const [emailId, setOpenEmailId] = useAtom(openEmailIdAtom);
+  const accountId = useAtomValue(activeAccountIdAtom);
+  const [, setComposeDraft] = useAtom(composeDraftAtom);
   const { data: email, isLoading, isError } = useEmail(emailId);
-  const { deleteEmail } = useEmailMutations();
+  const { deleteEmail, markRead } = useEmailMutations();
+  const { data: accounts = [] } = useAccounts();
+
+  const identityEmail = accounts.find((a) => a.id === accountId)?.email_address;
+
+  // Mark as read when opened (if unread)
+  useEffect(() => {
+    if (!emailId || !email) return;
+    const isRead = email.keywords?.['$seen'] ?? false;
+    if (!isRead) {
+      markRead.mutate({ emailId, read: true });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [emailId, email?.id]);
+
+  const handleReply = useCallback(() => {
+    if (!email) return;
+    setComposeDraft(buildReplyDraft(email, 'reply', identityEmail));
+  }, [email, identityEmail, setComposeDraft]);
+
+  const handleReplyAll = useCallback(() => {
+    if (!email) return;
+    setComposeDraft(buildReplyDraft(email, 'reply-all', identityEmail));
+  }, [email, identityEmail, setComposeDraft]);
+
+  const handleForward = useCallback(() => {
+    if (!email) return;
+    setComposeDraft(buildForwardDraft(email, identityEmail));
+  }, [email, identityEmail, setComposeDraft]);
 
   if (!emailId) {
     return (
@@ -132,7 +234,7 @@ export function EmailDetail() {
         <div className="h-px bg-border my-4" />
         <div className="space-y-2">
           {[...Array(8)].map((_, i) => (
-            <div key={i} className="h-4 bg-muted rounded animate-pulse" style={{ width: `${60 + Math.random() * 40}%` }} />
+            <div key={i} className="h-4 bg-muted rounded animate-pulse" style={{ width: `${60 + (i * 7) % 40}%` }} />
           ))}
         </div>
       </div>
@@ -157,19 +259,33 @@ export function EmailDetail() {
           <h1 className="text-lg font-semibold leading-tight">
             {email.subject || '(no subject)'}
           </h1>
-          <div className="flex items-center gap-1 flex-shrink-0">
+          {/* Action buttons */}
+          <div className="flex items-center gap-0.5 flex-shrink-0">
             <button
-              className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              onClick={handleReply}
+              className="px-2 py-1 rounded hover:bg-muted transition-colors text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
               title="Reply"
             >
-              ↩
+              <span>↩</span>
+              <span className="hidden sm:inline text-xs">Reply</span>
             </button>
             <button
-              className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              onClick={handleReplyAll}
+              className="px-2 py-1 rounded hover:bg-muted transition-colors text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+              title="Reply all"
+            >
+              <span>↩↩</span>
+              <span className="hidden sm:inline text-xs">All</span>
+            </button>
+            <button
+              onClick={handleForward}
+              className="px-2 py-1 rounded hover:bg-muted transition-colors text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
               title="Forward"
             >
-              →
+              <span>→</span>
+              <span className="hidden sm:inline text-xs">Fwd</span>
             </button>
+            <div className="w-px h-4 bg-border mx-1" />
             <button
               onClick={() => {
                 deleteEmail.mutate(emailId);
@@ -202,6 +318,12 @@ export function EmailDetail() {
             <span className="text-muted-foreground w-8 flex-shrink-0">Date</span>
             <span>{formatFullDate(email.receivedAt ?? '')}</span>
           </div>
+          {email.hasAttachment && (
+            <div className="flex gap-2">
+              <span className="text-muted-foreground w-8 flex-shrink-0">📎</span>
+              <span className="text-xs text-muted-foreground">Has attachment(s)</span>
+            </div>
+          )}
         </div>
       </div>
 

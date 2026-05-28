@@ -48,7 +48,7 @@ async function handlePublicKey(request: NextRequest) {
 
   const supabase = createServiceSupabaseClient();
   const { data } = await (supabase as any)
-    .from('upinbox.user_keys')
+    .schema('upinbox').from('user_keys')
     .select('public_key_armored, fingerprint')
     .eq('email_address', email.toLowerCase())
     .eq('revoked', false)
@@ -100,7 +100,7 @@ async function handleReceive(request: NextRequest) {
 
   // Verify recipient exists and has USX enabled
   const { data: recipient } = await (supabase as any)
-    .from('upinbox.user_keys')
+    .schema('upinbox').from('user_keys')
     .select('user_id')
     .eq('email_address', to.toLowerCase())
     .eq('revoked', false)
@@ -112,7 +112,7 @@ async function handleReceive(request: NextRequest) {
 
   // Idempotency check — reject duplicate nonces
   const { data: existing } = await (supabase as any)
-    .from('upinbox.usx_inbox')
+    .schema('upinbox').from('usx_inbox')
     .select('id')
     .eq('nonce', nonce)
     .single();
@@ -123,7 +123,7 @@ async function handleReceive(request: NextRequest) {
 
   // Store ciphertext — server never decrypts this
   const { data: saved, error } = await (supabase as any)
-    .from('upinbox.usx_inbox')
+    .schema('upinbox').from('usx_inbox')
     .insert({
       recipient_user_id: recipient.user_id,
       from_email: from,
@@ -166,7 +166,7 @@ async function handleDiscover(request: NextRequest) {
   // Check local cache first
   const supabase = await createServerSupabaseClient();
   const { data: cached } = await (supabase as any)
-    .from('upinbox.usx_cache')
+    .schema('upinbox').from('usx_cache')
     .select('*')
     .eq('domain', domain)
     .gt('fetched_at', new Date(Date.now() - 3600 * 1000).toISOString()) // 1h cache
@@ -181,7 +181,7 @@ async function handleDiscover(request: NextRequest) {
 
   if (record) {
     // Cache the result
-    await (supabase as any).from('upinbox.usx_cache').upsert(
+    await (supabase as any).schema('upinbox').from('usx_cache').upsert(
       {
         domain,
         endpoint: record.endpoint,
@@ -224,14 +224,14 @@ async function handleRegisterKey(request: NextRequest) {
 
   // Revoke old keys for this email
   await (supabase as any)
-    .from('upinbox.user_keys')
+    .schema('upinbox').from('user_keys')
     .update({ revoked: true, revoked_at: new Date().toISOString() })
     .eq('user_id', user.id)
     .eq('email_address', emailAddress.toLowerCase());
 
   // Insert new key
   const { data, error } = await (supabase as any)
-    .from('upinbox.user_keys')
+    .schema('upinbox').from('user_keys')
     .insert({
       user_id: user.id,
       email_address: emailAddress.toLowerCase(),

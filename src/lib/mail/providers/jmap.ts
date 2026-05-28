@@ -128,19 +128,32 @@ export class JmapProvider implements MailProvider {
   // ── Email Queries ──────────────────────────────────────────────────────────
 
   async queryEmails(opts: {
-    mailboxId: string;
+    mailboxId?: string;
     limit?: number;
+    position?: number;
     offset?: number;
-    sort?: 'asc' | 'desc';
+    sort?: 'asc' | 'desc' | Array<{ property: string; isAscending: boolean }>;
+    sortDir?: 'asc' | 'desc';
+    before?: Date;
+    since?: Date;
+    hasKeyword?: Record<string, boolean>;
     search?: string;
+    from?: string;
+    subject?: string;
+    hasAttachment?: boolean;
   }): Promise<{ ids: string[]; total: number }> {
     const limit = opts.limit ?? 50;
-    const offset = opts.offset ?? 0;
+    const offset = opts.position ?? opts.offset ?? 0;
+    const dir = opts.sortDir ?? (typeof opts.sort === 'string' ? opts.sort : 'desc');
 
-    const filter: Record<string, unknown> = { inMailbox: opts.mailboxId };
-    if (opts.search) {
-      filter.text = opts.search;
-    }
+    const filter: Record<string, unknown> = {};
+    if (opts.mailboxId) filter.inMailbox = opts.mailboxId;
+    if (opts.search) filter.text = opts.search;
+    if (opts.from) filter.from = opts.from;
+    if (opts.subject) filter.subject = opts.subject;
+    if (opts.before) filter.before = opts.before.toISOString();
+    if (opts.since) filter.after = opts.since.toISOString();
+    if (!Object.keys(filter).length) filter.inMailbox = opts.mailboxId;
 
     const { methodResponses } = await jmapRequest(this.session.apiUrl, this.token, [
       [
@@ -148,7 +161,7 @@ export class JmapProvider implements MailProvider {
         {
           accountId: this.jmapAccountId,
           filter,
-          sort: [{ property: 'receivedAt', isAscending: opts.sort === 'asc' }],
+          sort: [{ property: 'receivedAt', isAscending: dir === 'asc' }],
           limit,
           position: offset,
           calculateTotal: true,

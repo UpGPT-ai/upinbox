@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
 
   // Fetch account (RLS ensures it belongs to the current user)
   const { data: account, error: accountError } = await (supabase as any)
-    .from('upinbox.accounts')
+    .schema('upinbox').from('accounts')
     .select('*')
     .eq('id', accountId)
     .eq('user_id', user.id)
@@ -53,22 +53,23 @@ export async function GET(request: NextRequest) {
   }
 
   // Upsert into local cache for fast subsequent loads
+  // Column names match upinbox.mailboxes schema: mailbox_id, unread_emails
   const upsertData = providerMailboxes.map((mb, idx) => ({
     account_id: accountId,
     user_id: user.id,
-    provider_mailbox_id: mb.id,
+    mailbox_id: mb.id,
     name: mb.name,
     role: mb.role ?? null,
     sort_order: idx,
     total_emails: mb.totalEmails ?? 0,
-    unread_count: mb.unreadEmails ?? 0,
+    unread_emails: mb.unreadEmails ?? 0,
   }));
 
   if (upsertData.length > 0) {
     await (supabase as any)
-      .from('upinbox.mailboxes')
+      .schema('upinbox').from('mailboxes')
       .upsert(upsertData, {
-        onConflict: 'account_id,provider_mailbox_id',
+        onConflict: 'account_id,mailbox_id',
         ignoreDuplicates: false,
       });
   }

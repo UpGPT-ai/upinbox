@@ -22,7 +22,7 @@ export async function GET() {
 
   const supabase = await createServerSupabaseClient();
   const { data, error } = await (supabase as any)
-    .from('upinbox.accounts')
+    .schema('upinbox').from('accounts')
     .select('id, email_address, display_name, provider_type, is_primary, sync_enabled, last_synced_at, created_at')
     .eq('user_id', user.id)
     .order('is_primary', { ascending: false })
@@ -56,29 +56,29 @@ const ConnectAccountSchema = z.discriminatedUnion('provider_type', [
     credentials: z.discriminatedUnion('type', [
       z.object({
         type: z.literal('imap'),
-        host: z.string().min(1),
-        port: z.number().int().min(1).max(65535),
-        secure: z.boolean(),
+        imapHost: z.string().min(1),
+        imapPort: z.number().int().min(1).max(65535),
+        imapTls: z.boolean().optional(),
         username: z.string().min(1),
         password: z.string().min(1),
-        smtp_host: z.string().min(1),
-        smtp_port: z.number().int().min(1).max(65535),
-        smtp_secure: z.boolean(),
+        smtpHost: z.string().min(1),
+        smtpPort: z.number().int().min(1).max(65535),
+        smtpTls: z.boolean().optional(),
       }),
       z.object({
         type: z.literal('oauth_imap'),
-        host: z.string().min(1),
-        port: z.number().int().min(1).max(65535),
-        secure: z.boolean(),
+        imapHost: z.string().min(1),
+        imapPort: z.number().int().min(1).max(65535),
+        imapTls: z.boolean().optional(),
         username: z.string().min(1),
-        access_token: z.string().min(1),
-        refresh_token: z.string().optional(),
-        token_url: z.string().url().optional(),
-        client_id: z.string().optional(),
-        client_secret: z.string().optional(),
-        smtp_host: z.string().min(1),
-        smtp_port: z.number().int().min(1).max(65535),
-        smtp_secure: z.boolean(),
+        accessToken: z.string().min(1),
+        refreshToken: z.string().optional(),
+        tokenUrl: z.string().url().optional(),
+        clientId: z.string().optional(),
+        clientSecret: z.string().optional(),
+        smtpHost: z.string().min(1),
+        smtpPort: z.number().int().min(1).max(65535),
+        smtpTls: z.boolean().optional(),
       }),
     ]),
   }),
@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
 
   // Check if this is the first account (make it primary)
   const { count } = await (supabase as any)
-    .from('upinbox.accounts')
+    .schema('upinbox').from('accounts')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', user.id);
 
@@ -151,7 +151,7 @@ export async function POST(request: NextRequest) {
   const encryptedForStorage = await encryptCredentials(data.credentials as Parameters<typeof encryptCredentials>[0]);
 
   const { data: account, error } = await (supabase as any)
-    .from('upinbox.accounts')
+    .schema('upinbox').from('accounts')
     .insert({
       user_id: user.id,
       email_address: data.email_address,
