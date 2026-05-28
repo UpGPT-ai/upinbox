@@ -5,9 +5,10 @@
  * and bulk action bar.
  */
 
-import { useState, useCallback } from 'react';
+import { useState } from 'react';
 import { VList } from 'virtua';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
+import { useQueryClient } from '@tanstack/react-query';
 import {
   openEmailIdAtom,
   selectedEmailIdsAtom,
@@ -168,19 +169,23 @@ interface ListHeaderProps {
   allEmails: JmapEmail[];
   mailboxRole: string | null;
   mailboxName: string;
+  mailboxId: string;
+  accountId: string | null;
   onClear: () => void;
   onSelectAll: () => void;
 }
 
-function ListHeader({ selectedIds, allEmails, mailboxRole, mailboxName, onClear, onSelectAll }: ListHeaderProps) {
+function ListHeader({ selectedIds, allEmails, mailboxRole, mailboxName, mailboxId, accountId, onClear, onSelectAll }: ListHeaderProps) {
   const { bulkDelete, bulkMarkRead, bulkFlag } = useEmailMutations();
+  const queryClient = useQueryClient();
+  const [emptying, setEmptying] = useState(false);
   const ids = [...selectedIds];
   const count = ids.length;
   const total = allEmails.length;
   const allSelected = total > 0 && count === total;
   const partialSelected = count > 0 && !allSelected;
   const anySelected = count > 0;
-  const isPending = bulkDelete.isPending || bulkMarkRead.isPending || bulkFlag.isPending;
+  const isPending = bulkDelete.isPending || bulkMarkRead.isPending || bulkFlag.isPending || emptying;
   const isTrashLike = mailboxRole && TRASH_ROLES.has(mailboxRole);
 
   const run = async (fn: () => Promise<void>) => { await fn(); onClear(); };
@@ -191,15 +196,28 @@ function ListHeader({ selectedIds, allEmails, mailboxRole, mailboxName, onClear,
   };
 
   const handleEmptyFolder = async () => {
-    if (total === 0) return;
-    const label = isTrashLike ? `Empty ${mailboxName}` : `Delete all ${total} emails`;
     const msg = isTrashLike
-      ? `Permanently delete all ${total} emails in ${mailboxName}? This cannot be undone.`
-      : `Move all ${total} emails in ${mailboxName} to Trash?`;
+      ? `Permanently delete ALL emails in ${mailboxName}? This cannot be undone.`
+      : `Move ALL emails in ${mailboxName} to Trash?`;
     if (!window.confirm(msg)) return;
-    onSelectAll();
-    await bulkDelete.mutateAsync(allEmails.map(e => e.id));
-    onClear();
+    setEmptying(true);
+    try {
+      const res = await fetch('/api/upinbox/mailboxes/empty', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ accountId, mailboxId }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        alert(`Failed: ${err.error ?? res.status}`);
+        return;
+      }
+      onClear();
+      // Invalidate so the list refreshes to empty
+      queryClient.invalidateQueries({ queryKey: ['upinbox', 'emails'] });
+    } finally {
+      setEmptying(false);
+    }
   };
 
   return (
@@ -266,21 +284,23 @@ function ListHeader({ selectedIds, allEmails, mailboxRole, mailboxName, onClear,
             {total === 0 ? 'No emails' : `${total} email${total === 1 ? '' : 's'}`}
           </span>
           <div className="flex-1" />
-          {total > 0 && (
-            <button
-              onClick={handleEmptyFolder}
-              disabled={isPending || bulkDelete.isPending}
-              className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors disabled:opacity-50 ${
-                isTrashLike
-                  ? 'text-destructive hover:bg-destructive/10'
-                  : 'text-muted-foreground hover:bg-muted hover:text-foreground'
-              }`}
-              title={isTrashLike ? `Empty ${mailboxName}` : `Delete all emails in ${mailboxName}`}
-            >
+          <button
+            onClick={handleEmptyFolder}
+            disabled={isPending}
+            className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors disabled:opacity-50 ${
+              isTrashLike
+                ? 'text-destructive hover:bg-destructive/10'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            }`}
+            title={isTrashLike ? `Empty ${mailboxName} (all messages)` : `Delete all messages in ${mailboxName}`}
+          >
+            {emptying ? (
+              <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+            ) : (
               <span>🗑</span>
-              <span>{isTrashLike ? 'Empty folder' : 'Delete all'}</span>
-            </button>
-          )}
+            )}
+            <span>{isTrashLike ? 'Empty folder' : 'Delete all'}</span>
+          </button>
         </>
       )}
     </div>
@@ -414,6 +434,8 @@ export function EmailList({ mailboxId }: EmailListProps) {
           allEmails={emails}
           mailboxRole={mailboxRole}
           mailboxName={mailboxName}
+          mailboxId={mailboxId}
+          accountId={accountId}
           onClear={clearSelection}
           onSelectAll={selectAll}
         />

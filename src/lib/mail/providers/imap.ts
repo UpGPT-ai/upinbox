@@ -537,6 +537,33 @@ export class ImapProvider implements MailProvider {
     }
   }
 
+  /**
+   * emptyMailbox — permanently deletes ALL messages in the given IMAP folder.
+   * Marks every message \Deleted then calls EXPUNGE.
+   * Used for "Empty Folder" / "Empty Trash" — operates server-side so it
+   * clears ALL messages, not just the current page.
+   */
+  async emptyMailbox(mailboxPath: string): Promise<number> {
+    const client = await this.connect();
+    try {
+      const lock = await client.getMailboxLock(mailboxPath);
+      let count = 0;
+      try {
+        const allUids = await client.search({ all: true }, { uid: true });
+        count = allUids.length;
+        if (count > 0) {
+          await client.messageFlagsAdd(allUids, ['\\Deleted'], { uid: true });
+          await client.expunge();
+        }
+      } finally {
+        lock.release();
+      }
+      return count;
+    } finally {
+      await client.logout();
+    }
+  }
+
   async getIdentities(): Promise<JmapIdentity[]> {
     // IMAP has no identity concept — return a single identity from the account email
     return [{
