@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
   // DB connectivity check
   try {
     const supabase = await createServerSupabaseClient();
-    await supabase.from('upinbox.accounts').select('id').limit(1);
+    await (supabase as any).from('upinbox.accounts').select('id').limit(1);
     health.db = 'ok';
   } catch (err) {
     health.db = 'error';
@@ -42,13 +42,13 @@ export async function GET(request: NextRequest) {
     const user = await getCurrentUser();
     if (user) {
       const supabase = await createServerSupabaseClient();
-      const { data: accounts } = await supabase
+      const { data: accounts } = await (supabase as any)
         .from('upinbox.accounts')
         .select('id, email_address, provider_type, last_synced_at')
         .eq('user_id', user.id)
         .eq('sync_enabled', true);
 
-      health.accounts = (accounts ?? []).map((a) => ({
+      health.accounts = (accounts ?? []).map((a: { id: string; email_address: string; provider_type: string; last_synced_at: string | null }) => ({
         id: a.id,
         email: a.email_address,
         provider: a.provider_type,

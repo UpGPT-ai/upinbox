@@ -35,10 +35,17 @@ export interface MailProvider {
 
   // ── Email Queries ──────────────────────────────────────────────────────────
   queryEmails(opts: {
-    mailboxId: string;
+    mailboxId?: string;
     limit?: number;
+    /** Cursor-based position (0-indexed) for pagination */
+    position?: number;
+    /** Legacy offset alias */
     offset?: number;
-    sort?: 'asc' | 'desc';
+    sort?: 'asc' | 'desc' | Array<{ property: string; isAscending: boolean }>;
+    /** Upper-bound date filter */
+    before?: Date;
+    /** Filter by keyword presence/absence (e.g. { '$seen': false }) */
+    hasKeyword?: Record<string, boolean>;
     /** Free-text search — passed to JMAP text filter or IMAP SEARCH */
     search?: string;
   }): Promise<{ ids: string[]; total: number }>;

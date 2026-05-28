@@ -26,7 +26,7 @@ export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
 
   // Fetch account (RLS ensures it belongs to the current user)
-  const { data: account, error: accountError } = await supabase
+  const { data: account, error: accountError } = await (supabase as any)
     .from('upinbox.accounts')
     .select('*')
     .eq('id', accountId)
@@ -65,7 +65,7 @@ export async function GET(request: NextRequest) {
   }));
 
   if (upsertData.length > 0) {
-    await supabase
+    await (supabase as any)
       .from('upinbox.mailboxes')
       .upsert(upsertData, {
         onConflict: 'account_id,provider_mailbox_id',

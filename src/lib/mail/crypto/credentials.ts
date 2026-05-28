@@ -44,7 +44,7 @@ async function getWrappingKey(): Promise<CryptoKey> {
     );
   }
 
-  return crypto.subtle.importKey('raw', keyBytes, { name: ALG }, false, ['encrypt', 'decrypt']);
+  return crypto.subtle.importKey('raw', keyBytes.buffer as ArrayBuffer, { name: ALG }, false, ['encrypt', 'decrypt']);
 }
 
 /**

@@ -12,15 +12,14 @@ export const dynamic = 'force-dynamic';
 
 export async function DELETE(
   _request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const supabase = await createServerSupabaseClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
-
-  const { id } = params;
 
   // Soft-delete: set revoked_at. RLS + user_id check prevents revoking others' tokens.
   const { error } = await supabase

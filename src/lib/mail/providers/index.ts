@@ -10,7 +10,6 @@
  *   const mailboxes = await provider.listMailboxes();
  */
 
-import { decryptCredentials } from '@/lib/mail/crypto/credentials';
 import { JmapProvider } from './jmap';
 import { ImapProvider } from './imap';
 import type { MailProvider } from './types';
@@ -45,9 +44,6 @@ export interface UpInboxAccount {
  * @throws if provider_type is unknown or credentials cannot be decrypted
  */
 export async function getMailProvider(account: UpInboxAccount): Promise<MailProvider> {
-  // Decrypt credentials — key is PLATFORM_ENCRYPTION_KEY env var
-  const credentials = await decryptCredentials(account.encrypted_credentials);
-
   switch (account.provider_type) {
     case 'jmap': {
       if (!account.jmap_session_url) {
@@ -55,11 +51,11 @@ export async function getMailProvider(account: UpInboxAccount): Promise<MailProv
           `Account ${account.id} is type 'jmap' but has no jmap_session_url`
         );
       }
-      return JmapProvider.create(account, credentials);
+      return JmapProvider.create(account);
     }
 
     case 'imap': {
-      return ImapProvider.create(account, credentials);
+      return ImapProvider.create(account);
     }
 
     default: {

@@ -27,9 +27,9 @@ const OUTLOOK_SMTP_PORT = 587;
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { provider: string } }
+  { params }: { params: Promise<{ provider: string }> }
 ) {
-  const provider = params.provider;
+  const { provider } = await params;
   const code = request.nextUrl.searchParams.get('code');
   const state = request.nextUrl.searchParams.get('state');
   const error = request.nextUrl.searchParams.get('error');
@@ -46,7 +46,7 @@ export async function GET(
 
   // Verify CSRF state
   const supabase = await createServerSupabaseClient();
-  const { data: stateRecord, error: stateError } = await supabase
+  const { data: stateRecord, error: stateError } = await (supabase as any)
     .from('upinbox.oauth_states')
     .select('*')
     .eq('state', state)
@@ -59,7 +59,7 @@ export async function GET(
   }
 
   // Delete state (single-use)
-  await supabase.from('upinbox.oauth_states').delete().eq('state', state);
+  await (supabase as any).from('upinbox.oauth_states').delete().eq('state', state);
 
   const user = await getCurrentUser();
   if (!user || user.id !== stateRecord.user_id) {
@@ -97,18 +97,22 @@ export async function GET(
       // Build OAuth IMAP credentials
       const credentials = {
         type: 'oauth_imap' as const,
-        host: GMAIL_IMAP_HOST,
-        port: GMAIL_IMAP_PORT,
-        secure: true,
+        provider: 'gmail' as const,
         username: email,
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        token_url: 'https://oauth2.googleapis.com/token',
-        client_id: process.env.GOOGLE_CLIENT_ID!,
-        client_secret: process.env.GOOGLE_CLIENT_SECRET!,
-        smtp_host: GMAIL_SMTP_HOST,
-        smtp_port: GMAIL_SMTP_PORT,
-        smtp_secure: false,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresAt: tokens.expires_in
+          ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+          : undefined,
+        clientId: process.env.GOOGLE_CLIENT_ID!,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+        tokenUrl: 'https://oauth2.googleapis.com/token',
+        imapHost: GMAIL_IMAP_HOST,
+        imapPort: GMAIL_IMAP_PORT,
+        imapTls: true,
+        smtpHost: GMAIL_SMTP_HOST,
+        smtpPort: GMAIL_SMTP_PORT,
+        smtpTls: false,
       };
 
       const encrypted = await encryptCredentials(credentials);
@@ -125,12 +129,12 @@ export async function GET(
 
       // Save account
       const serviceClient = createServiceSupabaseClient();
-      const { count } = await serviceClient
+      const { count } = await (serviceClient as any)
         .from('upinbox.accounts')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id);
 
-      await serviceClient.from('upinbox.accounts').insert({
+      await (serviceClient as any).from('upinbox.accounts').insert({
         user_id: user.id,
         email_address: email,
         display_name: userInfo.name ?? email,
@@ -166,28 +170,32 @@ export async function GET(
 
       const credentials = {
         type: 'oauth_imap' as const,
-        host: OUTLOOK_IMAP_HOST,
-        port: OUTLOOK_IMAP_PORT,
-        secure: true,
+        provider: 'outlook' as const,
         username: email,
-        access_token: tokens.access_token,
-        refresh_token: tokens.refresh_token,
-        token_url: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
-        client_id: process.env.MICROSOFT_CLIENT_ID!,
-        client_secret: process.env.MICROSOFT_CLIENT_SECRET!,
-        smtp_host: OUTLOOK_SMTP_HOST,
-        smtp_port: OUTLOOK_SMTP_PORT,
-        smtp_secure: false,
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresAt: tokens.expires_in
+          ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+          : undefined,
+        clientId: process.env.MICROSOFT_CLIENT_ID!,
+        clientSecret: process.env.MICROSOFT_CLIENT_SECRET!,
+        tokenUrl: 'https://login.microsoftonline.com/common/oauth2/v2.0/token',
+        imapHost: OUTLOOK_IMAP_HOST,
+        imapPort: OUTLOOK_IMAP_PORT,
+        imapTls: true,
+        smtpHost: OUTLOOK_SMTP_HOST,
+        smtpPort: OUTLOOK_SMTP_PORT,
+        smtpTls: false,
       };
 
       const encrypted = await encryptCredentials(credentials);
       const serviceClient = createServiceSupabaseClient();
-      const { count } = await serviceClient
+      const { count } = await (serviceClient as any)
         .from('upinbox.accounts')
         .select('*', { count: 'exact', head: true })
         .eq('user_id', user.id);
 
-      await serviceClient.from('upinbox.accounts').insert({
+      await (serviceClient as any).from('upinbox.accounts').insert({
         user_id: user.id,
         email_address: email,
         display_name: userInfo.displayName ?? email,

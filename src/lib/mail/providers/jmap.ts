@@ -82,7 +82,7 @@ export class JmapProvider implements MailProvider {
   }
 
   static async create(account: UpInboxAccount): Promise<JmapProvider> {
-    const credentials = await decryptCredentials(account.credentials_enc) as JmapCredentials;
+    const credentials = await decryptCredentials(account.encrypted_credentials) as JmapCredentials;
 
     // Fetch JMAP session from well-known URL
     const sessionRes = await fetch(credentials.sessionUrl, {

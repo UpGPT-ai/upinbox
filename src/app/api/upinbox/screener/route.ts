@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
 
 async function getRules(userId: string) {
   const supabase = await createServerSupabaseClient();
-  const { data: rules, error } = await supabase
+  const { data: rules, error } = await (supabase as any)
     .from('upinbox.screener_rules')
     .select('*')
     .eq('user_id', userId)
@@ -55,7 +55,7 @@ async function getRules(userId: string) {
   // Seed defaults if user has no rules yet
   if (!rules || rules.length === 0) {
     await seedDefaultRulesInternal(userId);
-    const { data: seeded } = await supabase
+    const { data: seeded } = await (supabase as any)
       .from('upinbox.screener_rules')
       .select('*')
       .eq('user_id', userId)
@@ -93,21 +93,22 @@ async function getFeed(request: NextRequest, userId: string) {
   const supabase = await createServerSupabaseClient();
 
   // Fetch triage results for this account with matching categories
-  const { data: triageResults } = await supabase
+  type TriageRow = { email_id: string; category: string; confidence: number; classified_at: string };
+  const { data: triageResults } = await (supabase as any)
     .from('upinbox.triage_results')
     .select('email_id, category, confidence, classified_at')
     .eq('user_id', userId)
     .eq('account_id', accountId)
     .in('category', categories)
     .order('classified_at', { ascending: false })
-    .limit(limit);
+    .limit(limit) as { data: TriageRow[] | null };
 
   if (!triageResults || triageResults.length === 0) {
     return NextResponse.json({ emails: [], total: 0 });
   }
 
   // Fetch the actual emails from the provider
-  const { data: account } = await supabase
+  const { data: account } = await (supabase as any)
     .from('upinbox.accounts')
     .select('*')
     .eq('id', accountId)
@@ -173,7 +174,7 @@ async function processEmailBatch(request: NextRequest, userId: string) {
   const supabase = await createServerSupabaseClient();
 
   // Verify account
-  const { data: account } = await supabase
+  const { data: account } = await (supabase as any)
     .from('upinbox.accounts')
     .select('*')
     .eq('id', accountId)
@@ -183,7 +184,7 @@ async function processEmailBatch(request: NextRequest, userId: string) {
   if (!account) return NextResponse.json({ error: 'Account not found' }, { status: 404 });
 
   // Load screener rules
-  const { data: rules } = await supabase
+  const { data: rules } = await (supabase as any)
     .from('upinbox.screener_rules')
     .select('*')
     .eq('user_id', userId)
@@ -191,15 +192,16 @@ async function processEmailBatch(request: NextRequest, userId: string) {
     .order('priority', { ascending: true });
 
   // Fetch triage results for these emails (classified separately)
-  const { data: triageResults } = await supabase
+  type TriageRow2 = { email_id: string; category: string; confidence: number; signals: unknown };
+  const { data: triageResults } = await (supabase as any)
     .from('upinbox.triage_results')
     .select('email_id, category, confidence, signals')
     .eq('user_id', userId)
     .eq('account_id', accountId)
-    .in('email_id', emailIds);
+    .in('email_id', emailIds) as { data: TriageRow2[] | null };
 
   const triageMap = new Map(
-    (triageResults ?? []).map((r) => [r.email_id, r])
+    (triageResults ?? []).map((r: TriageRow2) => [r.email_id, r])
   );
 
   // Apply screener rules to each email
@@ -229,7 +231,7 @@ async function processEmailBatch(request: NextRequest, userId: string) {
 
   // Store screener decisions in DB
   if (results.length > 0) {
-    await supabase.from('upinbox.screener_decisions').upsert(
+    await (supabase as any).from('upinbox.screener_decisions').upsert(
       results.map((r) => ({
         user_id: userId,
         account_id: accountId,
@@ -254,7 +256,7 @@ async function seedDefaultRules(userId: string) {
 
 async function seedDefaultRulesInternal(userId: string) {
   const supabase = await createServerSupabaseClient();
-  await supabase.from('upinbox.screener_rules').insert(
+  await (supabase as any).from('upinbox.screener_rules').insert(
     DEFAULT_SCREENER_RULES.map((rule) => ({
       ...rule,
       user_id: userId,
@@ -295,7 +297,7 @@ async function upsertRules(request: NextRequest, userId: string) {
     id: r.id ?? crypto.randomUUID(),
   }));
 
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from('upinbox.screener_rules')
     .upsert(upsertData, { onConflict: 'id' })
     .select('*');

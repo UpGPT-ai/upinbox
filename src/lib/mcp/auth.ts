@@ -35,7 +35,7 @@ export async function authenticateMcpToken(
   const tokenHash = await hashToken(token);
 
   const supabase = createServiceSupabaseClient();
-  const { data } = await supabase
+  const { data } = await (supabase as any)
     .from('upinbox.mcp_tokens')
     .select('id, user_id, scopes, description, expires_at, revoked_at, last_used_at')
     .eq('token_hash', tokenHash)
@@ -48,7 +48,7 @@ export async function authenticateMcpToken(
   if (data.expires_at && new Date(data.expires_at) < new Date()) return null;
 
   // Update last_used_at (non-blocking)
-  supabase
+  (supabase as any)
     .from('upinbox.mcp_tokens')
     .update({ last_used_at: new Date().toISOString() })
     .eq('id', data.id)

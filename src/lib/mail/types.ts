@@ -12,21 +12,23 @@ export type ProviderType = 'jmap' | 'imap' | 'exchange' | 'gmail';
 
 export interface UpInboxAccount {
   id: string;
-  org_id: string;
-  user_id: string;
-  /** Which mail protocol this account uses */
-  provider_type: ProviderType;
-  /** AES-256-GCM encrypted JSON blob of ProviderCredentials */
-  credentials_enc: string;
   email_address: string;
-  display_name: string;
-  is_primary: boolean;
-  /** Health status — updated by background health monitor */
-  health_status: 'ok' | 'error' | 'unknown';
+  /** Which mail protocol this account uses */
+  provider_type: 'jmap' | 'imap';
+  /** AES-256-GCM encrypted JSON blob of ProviderCredentials */
+  encrypted_credentials: string;
+  // JMAP-specific
+  jmap_session_url?: string;
+  // Optional metadata
+  display_name?: string;
+  org_id?: string;
+  user_id?: string;
+  is_primary?: boolean;
+  health_status?: 'ok' | 'error' | 'unknown';
   health_error?: string;
   health_checked_at?: string;
-  created_at: string;
-  updated_at: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 // ─── Provider Credentials (stored encrypted, never transmitted) ────────────────
@@ -52,13 +54,19 @@ export interface ImapCredentials {
 export interface OAuthImapCredentials {
   type: 'oauth_imap';
   provider: 'gmail' | 'outlook';
+  username: string;
   accessToken: string;
   refreshToken: string;
-  expiresAt: string;    // ISO timestamp
+  expiresAt?: string;   // ISO timestamp (may be absent on initial grant)
+  clientId: string;
+  clientSecret: string;
+  tokenUrl: string;
   imapHost: string;
   imapPort: number;
+  imapTls?: boolean;    // defaults true
   smtpHost: string;
   smtpPort: number;
+  smtpTls?: boolean;    // defaults false (STARTTLS)
 }
 
 export type ProviderCredentials = JmapCredentials | ImapCredentials | OAuthImapCredentials;
@@ -86,7 +94,7 @@ export interface JmapEmailAddress {
 export interface JmapBodyPart {
   partId: string;
   blobId?: string;
-  size: number;
+  size?: number;       // optional when creating drafts (unknown until sent)
   type: string;        // MIME type
   charset?: string;
   disposition?: 'inline' | 'attachment';

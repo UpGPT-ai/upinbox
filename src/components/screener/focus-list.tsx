@@ -138,7 +138,7 @@ export function FocusList() {
                       {sender?.name || sender?.email || 'Unknown'}
                     </span>
                     <span className="text-xs text-muted-foreground flex-shrink-0">
-                      {formatDate(email.receivedAt ?? email.sentAt ?? '')}
+                      {formatDate(email.receivedAt ?? '')}
                     </span>
                   </div>
                   <div className="text-sm truncate">{email.subject || '(no subject)'}</div>

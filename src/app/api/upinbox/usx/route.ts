@@ -47,7 +47,7 @@ async function handlePublicKey(request: NextRequest) {
   }
 
   const supabase = createServiceSupabaseClient();
-  const { data } = await (supabase as ReturnType<typeof createServiceSupabaseClient>)
+  const { data } = await (supabase as any)
     .from('upinbox.user_keys')
     .select('public_key_armored, fingerprint')
     .eq('email_address', email.toLowerCase())
@@ -99,7 +99,7 @@ async function handleReceive(request: NextRequest) {
   const supabase = createServiceSupabaseClient();
 
   // Verify recipient exists and has USX enabled
-  const { data: recipient } = await (supabase as ReturnType<typeof createServiceSupabaseClient>)
+  const { data: recipient } = await (supabase as any)
     .from('upinbox.user_keys')
     .select('user_id')
     .eq('email_address', to.toLowerCase())
@@ -111,7 +111,7 @@ async function handleReceive(request: NextRequest) {
   }
 
   // Idempotency check — reject duplicate nonces
-  const { data: existing } = await (supabase as ReturnType<typeof createServiceSupabaseClient>)
+  const { data: existing } = await (supabase as any)
     .from('upinbox.usx_inbox')
     .select('id')
     .eq('nonce', nonce)
@@ -122,7 +122,7 @@ async function handleReceive(request: NextRequest) {
   }
 
   // Store ciphertext — server never decrypts this
-  const { data: saved, error } = await (supabase as ReturnType<typeof createServiceSupabaseClient>)
+  const { data: saved, error } = await (supabase as any)
     .from('upinbox.usx_inbox')
     .insert({
       recipient_user_id: recipient.user_id,
@@ -165,7 +165,7 @@ async function handleDiscover(request: NextRequest) {
 
   // Check local cache first
   const supabase = await createServerSupabaseClient();
-  const { data: cached } = await supabase
+  const { data: cached } = await (supabase as any)
     .from('upinbox.usx_cache')
     .select('*')
     .eq('domain', domain)
@@ -181,7 +181,7 @@ async function handleDiscover(request: NextRequest) {
 
   if (record) {
     // Cache the result
-    await supabase.from('upinbox.usx_cache').upsert(
+    await (supabase as any).from('upinbox.usx_cache').upsert(
       {
         domain,
         endpoint: record.endpoint,
@@ -223,14 +223,14 @@ async function handleRegisterKey(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
 
   // Revoke old keys for this email
-  await supabase
+  await (supabase as any)
     .from('upinbox.user_keys')
     .update({ revoked: true, revoked_at: new Date().toISOString() })
     .eq('user_id', user.id)
     .eq('email_address', emailAddress.toLowerCase());
 
   // Insert new key
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from('upinbox.user_keys')
     .insert({
       user_id: user.id,

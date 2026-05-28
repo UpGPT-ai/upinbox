@@ -21,7 +21,7 @@ export async function GET() {
   }
 
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
+  const { data, error } = await (supabase as any)
     .from('upinbox.accounts')
     .select('id, email_address, display_name, provider_type, is_primary, sync_enabled, last_synced_at, created_at')
     .eq('user_id', user.id)
@@ -141,7 +141,7 @@ export async function POST(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
 
   // Check if this is the first account (make it primary)
-  const { count } = await supabase
+  const { count } = await (supabase as any)
     .from('upinbox.accounts')
     .select('*', { count: 'exact', head: true })
     .eq('user_id', user.id);
@@ -150,7 +150,7 @@ export async function POST(request: NextRequest) {
 
   const encryptedForStorage = await encryptCredentials(data.credentials as Parameters<typeof encryptCredentials>[0]);
 
-  const { data: account, error } = await supabase
+  const { data: account, error } = await (supabase as any)
     .from('upinbox.accounts')
     .insert({
       user_id: user.id,

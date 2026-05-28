@@ -200,7 +200,7 @@ export function EmailDetail() {
           )}
           <div className="flex gap-2">
             <span className="text-muted-foreground w-8 flex-shrink-0">Date</span>
-            <span>{formatFullDate(email.receivedAt ?? email.sentAt ?? '')}</span>
+            <span>{formatFullDate(email.receivedAt ?? '')}</span>
           </div>
         </div>
       </div>

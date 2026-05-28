@@ -94,7 +94,7 @@ export class ImapProvider implements MailProvider {
   }
 
   static async create(account: UpInboxAccount): Promise<ImapProvider> {
-    const credentials = await decryptCredentials(account.credentials_enc);
+    const credentials = await decryptCredentials(account.encrypted_credentials);
     if (credentials.type !== 'imap' && credentials.type !== 'oauth_imap') {
       throw new Error(`ImapProvider requires imap or oauth_imap credentials, got: ${credentials.type}`);
     }
@@ -134,13 +134,13 @@ export class ImapProvider implements MailProvider {
       const mailboxes: JmapMailbox[] = [];
 
       function flatten(node: import('imapflow').ListTreeResponse, parentId: string | null = null) {
-        const id = node.path;
-        const role = guessRole(node.path);
+        const id = node.path ?? '';
+        const role = guessRole(node.path ?? '');
 
         // Try to get counts — requires SELECT, which we skip for listing speed
         mailboxes.push({
           id,
-          name: node.name,
+          name: node.name ?? id,
           role,
           totalEmails: 0,   // filled lazily on select
           unreadEmails: 0,
@@ -164,30 +164,36 @@ export class ImapProvider implements MailProvider {
   // ── Email Queries ──────────────────────────────────────────────────────────
 
   async queryEmails(opts: {
-    mailboxId: string;
+    mailboxId?: string;
     limit?: number;
+    position?: number;
     offset?: number;
-    sort?: 'asc' | 'desc';
+    sort?: 'asc' | 'desc' | Array<{ property: string; isAscending: boolean }>;
+    before?: Date;
+    hasKeyword?: Record<string, boolean>;
     search?: string;
   }): Promise<{ ids: string[]; total: number }> {
+    const mailbox = opts.mailboxId ?? 'INBOX';
     const client = await this.connect();
     try {
-      const lock = await client.getMailboxLock(opts.mailboxId);
+      const lock = await client.getMailboxLock(mailbox);
       try {
         const criteria = opts.search
           ? { text: opts.search }
           : { all: true };
 
-        const uids = await client.search(criteria, { uid: true });
+        const rawUids = await client.search(criteria, { uid: true });
+        const uids: number[] = rawUids === false ? [] : rawUids as number[];
         const total = uids.length;
 
         // Sort: IMAP search returns ascending UIDs, reverse for newest-first
-        const sorted = opts.sort === 'asc' ? uids : [...uids].reverse();
-        const offset = opts.offset ?? 0;
+        const sortOpt = Array.isArray(opts.sort) ? 'desc' : (opts.sort ?? 'desc');
+        const sorted = sortOpt === 'asc' ? uids : [...uids].reverse();
+        const offset = opts.position ?? opts.offset ?? 0;
         const limit = opts.limit ?? 50;
         const page = sorted.slice(offset, offset + limit);
 
-        const ids = page.map((uid) => makeEmailId(uid as number, opts.mailboxId));
+        const ids = page.map((uid) => makeEmailId(uid, opts.mailboxId ?? 'INBOX'));
         return { ids, total };
       } finally {
         lock.release();
@@ -268,20 +274,30 @@ export class ImapProvider implements MailProvider {
     });
 
     const bodyText = Object.values(draft.bodyValues ?? {})[0]?.value ?? '';
-    const message = transport.sendMail({
+
+    // Build raw MIME using nodemailer MailComposer (compile without sending)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const MailComposerMod: any = await import('nodemailer/lib/mail-composer').catch(
+      () => import('nodemailer/lib/mail-composer/index.js')
+    );
+    const MailComposer = MailComposerMod.default ?? MailComposerMod;
+    const composer = new MailComposer({
       from: this.emailAddress,
-      to: draft.to?.map((a) => a.email).join(', '),
-      subject: draft.subject ?? '',
+      to: draft.to?.map((a: { email: string; name?: string }) => a.email).join(', '),
+      subject: draft.subject ?? '(no subject)',
       text: bodyText,
+    });
+
+    const rawMessage: string = await new Promise((resolve, reject) => {
+      composer.compile().build((err: Error | null, buf: Buffer) => {
+        if (err) reject(err);
+        else resolve(buf.toString('utf8'));
+      });
     });
 
     // Append to Drafts folder
     const client = await this.connect();
     try {
-      const rawMessage = await (await message).then
-        ? /* already a string */ bodyText
-        : bodyText;
-
       const result = await client.append('Drafts', rawMessage, ['\\Draft']);
       const uid = typeof result === 'object' && result !== null && 'uid' in result
         ? (result as { uid: number }).uid
@@ -392,7 +408,8 @@ export class ImapProvider implements MailProvider {
 
 // ─── IMAP → JmapEmail Mapping ─────────────────────────────────────────────────
 
-function mapImapMessageToJmap(msg: Record<string, unknown>, mailboxPath: string): JmapEmail {
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapImapMessageToJmap(msg: any, mailboxPath: string): JmapEmail {
   const envelope = msg.envelope as Record<string, unknown> | undefined;
   const flags = (msg.flags as Set<string> | undefined) ?? new Set<string>();
   const uid = msg.uid as number;

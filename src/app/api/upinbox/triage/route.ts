@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
 
   // Verify account ownership
   const supabase = await createServerSupabaseClient();
-  const { data: account, error: accountError } = await supabase
+  const { data: account, error: accountError } = await (supabase as any)
     .from('upinbox.accounts')
     .select('id')
     .eq('id', data.accountId)
@@ -94,7 +94,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Check for cached result (triage results are stable — email content doesn't change)
-  const { data: cached } = await supabase
+  const { data: cached } = await (supabase as any)
     .from('upinbox.triage_results')
     .select('*')
     .eq('account_id', data.accountId)
@@ -143,7 +143,7 @@ export async function POST(request: NextRequest) {
   );
 
   // Store result
-  const { data: saved, error: saveError } = await supabase
+  const { data: saved, error: saveError } = await (supabase as any)
     .from('upinbox.triage_results')
     .insert({
       user_id: user.id,

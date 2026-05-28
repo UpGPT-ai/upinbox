@@ -40,7 +40,7 @@ async function getAccountAndProvider(userId: string, accountId: string | null) {
   if (!accountId) return { error: 'accountId is required', status: 400 } as const;
 
   const supabase = await createServerSupabaseClient();
-  const { data: account, error } = await supabase
+  const { data: account, error } = await (supabase as any)
     .from('upinbox.accounts')
     .select('*')
     .eq('id', accountId)
@@ -57,8 +57,9 @@ async function getAccountAndProvider(userId: string, accountId: string | null) {
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -67,13 +68,13 @@ export async function GET(
   if ('error' in result) return NextResponse.json({ error: result.error }, { status: result.status });
 
   try {
-    const emails = await result.provider.getEmails([params.id], FULL_PROPERTIES);
+    const emails = await result.provider.getEmails([id], FULL_PROPERTIES);
     if (!emails.length) {
       return NextResponse.json({ error: 'Email not found' }, { status: 404 });
     }
 
     // Mark as read automatically
-    await result.provider.setKeywords(params.id, { '$seen': true }).catch(() => {
+    await result.provider.setKeywords(id, { '$seen': true }).catch(() => {
       // Non-fatal — best effort
     });
 
@@ -96,8 +97,9 @@ const PatchEmailSchema = z.object({
 
 export async function PATCH(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -117,10 +119,10 @@ export async function PATCH(
     const { keywords, mailboxId } = parsed.data;
 
     if (Object.keys(keywords).length > 0) {
-      await result.provider.setKeywords(params.id, keywords);
+      await result.provider.setKeywords(id, keywords);
     }
     if (mailboxId) {
-      await result.provider.moveEmail(params.id, mailboxId);
+      await result.provider.moveEmail(id, mailboxId);
     }
 
     return NextResponse.json({ ok: true });
@@ -136,8 +138,9 @@ export async function PATCH(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id } = await params;
   const user = await getCurrentUser();
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
@@ -146,7 +149,7 @@ export async function DELETE(
   if ('error' in result) return NextResponse.json({ error: result.error }, { status: result.status });
 
   try {
-    await result.provider.deleteEmail(params.id);
+    await result.provider.deleteEmail(id);
     return NextResponse.json({ ok: true });
   } catch (err) {
     return NextResponse.json(

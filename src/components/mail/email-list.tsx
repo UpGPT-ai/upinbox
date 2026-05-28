@@ -89,7 +89,7 @@ function EmailRow({ email, isOpen, isSelected, onOpen, onSelect }: EmailRowProps
             {formatSender(email)}
           </span>
           <span className="text-xs text-muted-foreground flex-shrink-0">
-            {formatDate(email.receivedAt ?? email.sentAt ?? '')}
+            {formatDate(email.receivedAt ?? '')}
           </span>
         </div>
         <div className="text-sm truncate mt-0.5">{email.subject || '(no subject)'}</div>

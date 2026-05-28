@@ -32,7 +32,7 @@ export async function GET() {
   if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
   const supabase = await createServerSupabaseClient();
-  const { data } = await supabase
+  const { data } = await (supabase as any)
     .from('upinbox.subscriptions')
     .select('tier, status, current_period_end, cancel_at_period_end, stripe_customer_id')
     .eq('user_id', user.id)
@@ -162,7 +162,7 @@ async function handleWebhook(request: NextRequest) {
 
     if (userId && plan) {
       const tier = plan.startsWith('business') ? 'business' : 'plus';
-      await supabase.from('upinbox.subscriptions').upsert({
+      await (supabase as any).from('upinbox.subscriptions').upsert({
         user_id: userId,
         tier,
         status: 'active',
@@ -180,7 +180,7 @@ async function handleWebhook(request: NextRequest) {
     const customerId = sub.customer as string;
 
     if (customerId) {
-      await supabase.from('upinbox.subscriptions')
+      await (supabase as any).from('upinbox.subscriptions')
         .update({ tier: 'free', status: 'canceled' })
         .eq('stripe_customer_id', customerId);
     }

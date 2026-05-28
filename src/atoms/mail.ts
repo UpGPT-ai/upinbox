@@ -36,7 +36,7 @@ export const mailboxFilterAtom = atom<'all' | 'unread' | 'flagged'>('all');
 export const openEmailIdAtom = atom<string | null>(null);
 
 /** Multi-selected email IDs (for bulk operations) */
-export const selectedEmailIdsAtom = atom<Set<string>>(new Set());
+export const selectedEmailIdsAtom = atom<Set<string>>(new Set<string>());
 
 /** Derived: number of selected emails */
 export const selectedCountAtom = atom(

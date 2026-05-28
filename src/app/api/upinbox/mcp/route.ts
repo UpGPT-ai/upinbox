@@ -157,7 +157,7 @@ async function executeTool(
 
   // Get primary account for this user
   const getAccount = async (accountId?: string) => {
-    const query = supabase
+    const query = (supabase as any)
       .from('upinbox.accounts')
       .select('*')
       .eq('user_id', userId);
@@ -175,7 +175,7 @@ async function executeTool(
 
   switch (name) {
     case 'list_accounts': {
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from('upinbox.accounts')
         .select('id, email_address, display_name, provider_type, is_primary, sync_enabled, last_synced_at')
         .eq('user_id', userId)
@@ -289,18 +289,20 @@ async function executeTool(
 
       if (!identity) throw new Error('No identity configured for this account');
 
+      const bodyKey = '1';
       const { id } = await provider.createDraft({
         from: [{ email: identity.email, name: identity.name ?? identity.email }],
         to: ((args.to as string[]) ?? []).map((email) => ({ email })),
         subject: args.subject as string,
-        bodyText: args.body as string,
+        bodyValues: { [bodyKey]: { value: args.body as string } },
+        textBody: [{ partId: bodyKey, type: 'text/plain' }],
       });
 
       return { draft_id: id };
     }
 
     case 'get_triage_result': {
-      const { data } = await supabase
+      const { data } = await (supabase as any)
         .from('upinbox.triage_results')
         .select('*')
         .eq('user_id', userId)

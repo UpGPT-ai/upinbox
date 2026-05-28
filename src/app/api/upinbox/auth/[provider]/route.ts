@@ -37,14 +37,14 @@ const MICROSOFT_SCOPES = [
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { provider: string } }
+  { params }: { params: Promise<{ provider: string }> }
 ) {
   const user = await getCurrentUser();
   if (!user) {
     return NextResponse.redirect(new URL('/login', request.url));
   }
 
-  const provider = params.provider;
+  const { provider } = await params;
   const redirectAfter = request.nextUrl.searchParams.get('redirect') ?? '/inbox';
 
   // Generate CSRF state token
@@ -52,7 +52,7 @@ export async function GET(
 
   // Store state in DB so we can verify on callback
   const supabase = await createServerSupabaseClient();
-  await supabase.from('upinbox.oauth_states').insert({
+  await (supabase as any).from('upinbox.oauth_states').insert({
     user_id: user.id,
     state,
     provider,

@@ -66,7 +66,7 @@ export async function GET(request: NextRequest) {
   const supabase = await createServerSupabaseClient();
 
   // Verify account ownership (RLS)
-  const { data: account, error: accountError } = await supabase
+  const { data: account, error: accountError } = await (supabase as any)
     .from('upinbox.accounts')
     .select('*')
     .eq('id', accountId)
