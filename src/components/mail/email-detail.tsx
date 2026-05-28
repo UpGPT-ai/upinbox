@@ -3,16 +3,20 @@
 /**
  * EmailDetail — reading pane showing the full email body.
  *
- * Renders HTML in a sandboxed iframe. Plain-text fallback.
- * Reply / Reply-all / Forward wire into composeDraftAtom.
- * Marks email as read automatically on open.
+ * Features:
+ * - Renders HTML in sandboxed iframe; plain-text fallback
+ * - Reply / Reply-all / Forward wire into composeDraftAtom
+ * - Mark as read automatically on open
+ * - Label chips + apply/remove labels dropdown
+ * - Delete, flag/unflag
  */
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
 import { openEmailIdAtom, activeAccountIdAtom, composeDraftAtom } from '@/atoms/mail';
 import { useEmail, useEmailMutations } from '@/hooks/use-emails';
 import { useAccounts } from '@/hooks/use-accounts';
+import { useLabels, useApplyLabel, useEmailLabels, type Label } from '@/hooks/use-labels';
 import type { JmapEmail } from '@/lib/mail/types';
 import type { ComposeDraft } from '@/atoms/mail';
 
@@ -179,6 +183,66 @@ function buildForwardDraft(email: JmapEmail, identityEmail?: string): ComposeDra
   };
 }
 
+// ── Label menu ────────────────────────────────────────────────────────────────
+
+function LabelMenu({
+  accountId,
+  emailUid,
+  onClose,
+}: {
+  accountId: string;
+  emailUid: string;
+  onClose: () => void;
+}) {
+  const { data: allLabels = [] } = useLabels(accountId);
+  const { data: emailLabels = [] } = useEmailLabels(accountId, emailUid);
+  const applyLabel = useApplyLabel();
+
+  const appliedIds = new Set(emailLabels.map((l: Label) => l.id));
+
+  const toggle = (label: Label) => {
+    applyLabel.mutate({
+      accountId,
+      emailUid,
+      labelId: label.id,
+      apply: !appliedIds.has(label.id),
+    });
+  };
+
+  return (
+    <div className="absolute top-8 right-0 z-50 bg-popover border rounded-xl shadow-xl w-48 py-1 overflow-hidden">
+      <div className="px-3 py-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+        Labels
+      </div>
+      {allLabels.map((label: Label) => (
+        <button
+          key={label.id}
+          onClick={() => toggle(label)}
+          className="w-full flex items-center gap-2.5 px-3 py-1.5 text-sm hover:bg-accent transition-colors"
+        >
+          <span
+            className="w-2.5 h-2.5 rounded-full flex-shrink-0"
+            style={{ backgroundColor: label.color }}
+          />
+          <span className="flex-1 text-left truncate">{label.name}</span>
+          {appliedIds.has(label.id) && <span className="text-primary text-xs">✓</span>}
+        </button>
+      ))}
+      {allLabels.length === 0 && (
+        <div className="px-3 py-2 text-xs text-muted-foreground">Loading…</div>
+      )}
+      <div className="border-t mt-1 pt-1">
+        <button
+          onClick={onClose}
+          className="w-full text-left px-3 py-1.5 text-xs text-muted-foreground hover:bg-accent transition-colors"
+        >
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 export function EmailDetail() {
@@ -188,8 +252,13 @@ export function EmailDetail() {
   const { data: email, isLoading, isError } = useEmail(emailId);
   const { deleteEmail, markRead } = useEmailMutations();
   const { data: accounts = [] } = useAccounts();
+  const [showLabelMenu, setShowLabelMenu] = useState(false);
 
   const identityEmail = accounts.find((a) => a.id === accountId)?.email_address;
+
+  // The IMAP UID is stored in the id field (or we use the email's id as uid)
+  const emailUid = email?.id ?? null;
+  const { data: emailLabels = [] } = useEmailLabels(accountId, emailUid);
 
   // Mark as read when opened (if unread)
   useEffect(() => {
@@ -260,7 +329,7 @@ export function EmailDetail() {
             {email.subject || '(no subject)'}
           </h1>
           {/* Action buttons */}
-          <div className="flex items-center gap-0.5 flex-shrink-0">
+          <div className="flex items-center gap-0.5 flex-shrink-0 relative">
             <button
               onClick={handleReply}
               className="px-2 py-1 rounded hover:bg-muted transition-colors text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
@@ -286,6 +355,23 @@ export function EmailDetail() {
               <span className="hidden sm:inline text-xs">Fwd</span>
             </button>
             <div className="w-px h-4 bg-border mx-1" />
+            {/* Label button */}
+            <div className="relative">
+              <button
+                onClick={() => setShowLabelMenu((v) => !v)}
+                className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+                title="Labels"
+              >
+                🏷️
+              </button>
+              {showLabelMenu && accountId && emailUid && (
+                <LabelMenu
+                  accountId={accountId}
+                  emailUid={emailUid}
+                  onClose={() => setShowLabelMenu(false)}
+                />
+              )}
+            </div>
             <button
               onClick={() => {
                 deleteEmail.mutate(emailId);
@@ -298,6 +384,21 @@ export function EmailDetail() {
             </button>
           </div>
         </div>
+
+        {/* Label chips */}
+        {emailLabels.length > 0 && (
+          <div className="flex flex-wrap gap-1.5">
+            {emailLabels.map((label: Label) => (
+              <span
+                key={label.id}
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium text-white"
+                style={{ backgroundColor: label.color }}
+              >
+                {label.name}
+              </span>
+            ))}
+          </div>
+        )}
 
         <div className="text-sm space-y-1">
           <div className="flex gap-2">

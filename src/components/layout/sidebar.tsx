@@ -15,6 +15,7 @@ import {
   activeMailboxIdAtom,
   sidebarCollapsedAtom,
   showConnectWizardAtom,
+  unifiedInboxAtom,
 } from '@/atoms/mail';
 import { useAccounts } from '@/hooks/use-accounts';
 import { useMailboxes } from '@/hooks/use-mailboxes';
@@ -303,6 +304,7 @@ export function MailSidebar() {
   const [collapsed] = useAtom(sidebarCollapsedAtom);
   const [activeAccountId, setActiveAccountId] = useAtom(activeAccountIdAtom);
   const [, setShowConnectWizard] = useAtom(showConnectWizardAtom);
+  const [unified, setUnified] = useAtom(unifiedInboxAtom);
   const { data: accounts = [], isLoading } = useAccounts();
 
   if (collapsed) {
@@ -331,9 +333,28 @@ export function MailSidebar() {
         )}
       </div>
 
-      {/* Mailbox list */}
+      {/* All Inboxes + per-account mailboxes */}
       <div className="flex-1 overflow-y-auto py-2">
-        {activeAccountId && <AccountSection accountId={activeAccountId} />}
+        {/* Unified inbox shortcut */}
+        {accounts.length > 1 && (
+          <div className="px-2 mb-1">
+            <button
+              onClick={() => setUnified((v) => !v)}
+              className={`
+                w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm transition-colors text-left
+                ${unified
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:bg-accent hover:text-accent-foreground'
+                }
+              `}
+            >
+              <span className="text-sm leading-none w-4 text-center flex-shrink-0">📬</span>
+              <span className="flex-1 truncate">All Inboxes</span>
+            </button>
+            {unified && <div className="my-1 border-t border-border/50" />}
+          </div>
+        )}
+        {!unified && activeAccountId && <AccountSection accountId={activeAccountId} />}
       </div>
     </div>
   );

@@ -191,10 +191,13 @@ export function useEmailMutations() {
   const deleteEmail = useMutation({
     mutationFn: async (emailId: string) => {
       const res = await fetch(
-        `/api/upinbox/emails/${emailId}?accountId=${accountId}`,
+        `/api/upinbox/emails/${encodeURIComponent(emailId)}?accountId=${accountId}`,
         { method: 'DELETE' }
       );
-      if (!res.ok) throw new Error(`deleteEmail failed: ${res.status}`);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.detail ?? body.error ?? `deleteEmail failed: ${res.status}`);
+      }
     },
     onSuccess: invalidateEmailList,
   });

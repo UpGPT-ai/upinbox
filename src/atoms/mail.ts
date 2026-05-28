@@ -27,6 +27,12 @@ export const providerTypeAtom = atom<'jmap' | 'imap' | null>(null);
 /** The currently selected mailbox ID */
 export const activeMailboxIdAtom = atom<string | null>(null);
 
+/**
+ * When true: show unified inbox (all accounts merged).
+ * Overrides activeMailboxIdAtom.
+ */
+export const unifiedInboxAtom = atom<boolean>(false);
+
 /** Mailbox filter: 'all' | 'unread' | 'flagged' */
 export const mailboxFilterAtom = atom<'all' | 'unread' | 'flagged'>('all');
 
