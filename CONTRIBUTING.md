@@ -1,92 +1,64 @@
 # Contributing to UpInbox
 
-Thanks for your interest in contributing! UpInbox is built on a few strong principles —
-understanding them will help your PR land faster.
+Thanks for considering a contribution! UpInbox is MIT-licensed and welcomes pull requests.
 
-## What's Open vs. Proprietary
-
-The client code in this repo is MIT licensed. The UpInbox intelligence API is proprietary.
-
-**You can contribute to:**
-- JMAP and IMAP provider adapters (`src/lib/mail/providers/`)
-- Encryption layer (`src/lib/mail/crypto/`)
-- USX protocol implementation (`src/lib/mail/usx/`)
-- MCP server tools
-- UI components
-- Documentation
-- Tests
-
-**What's NOT in this repo (and we won't accept PRs that embed it):**
-- The trained intelligence classifier (`api.upinbox.ai`)
-- Skills resolver and AI prompt library
-- Platform-specific billing or license enforcement
-
-If you find a security vulnerability, email [security@upinbox.ai](mailto:security@upinbox.ai) — do not open a public issue.
-
-## Getting Started
+## Setup
 
 ```bash
-git clone https://github.com/UpGPT-ai/upinbox.git
+git clone https://github.com/UpGPT-ai/upinbox
 cd upinbox
+cp .env.example .env.local
+# Fill in env vars (Supabase, encryption key, cron secret)
 npm install
-cp env.example .env.local
-# Fill in your Supabase URL + keys (free tier is fine for local dev)
 npm run dev
 ```
 
-## Development Guidelines
+## Code Standards
 
-### TypeScript
+- TypeScript strict mode
+- React Server Components where possible
+- All API routes in app/api/upinbox/
+- Database migrations in supabase/migrations/ (append-only, never edit applied ones)
+- New features ship with tests in src/__tests__/
 
-- Strict mode is on — no `any` escapes unless genuinely unavoidable
-- Export interfaces from `src/lib/mail/types.ts` — don't define duplicate types
-- Never import `@/lib/mail/providers` in client components — use API routes
+## Architecture
 
-### Database Changes
+- src/app/(app)/ — authenticated app routes (require Supabase session)
+- src/app/api/upinbox/ — REST API
+- src/lib/ — pure modules (mail providers, billing, intelligence)
+- src/components/ — React UI
+- supabase/migrations/ — schema changes (numbered, append-only)
 
-- All migrations in `supabase/migrations/` — numbered sequentially
-- Use `CREATE TABLE IF NOT EXISTS` — always
-- Every new table needs RLS enabled + at least one policy
-- Never modify an applied migration — add a new one
+## Capabilities Model
 
-### The Provider Abstraction
+UpInbox features are gated on UpGPT capabilities (email, mcp, byok, native_mobile). The gate is in src/lib/billing/upinbox-entitlement.ts. Add new API routes that touch user data behind requireEmailEntitlement.
 
-Every mail backend implements `MailProvider`. If you're adding Exchange or Yahoo support:
+## Testing
 
-1. Create `src/lib/mail/providers/exchange.ts` implementing `MailProvider`
-2. Add the case to `src/lib/mail/providers/index.ts`
-3. Add the credential type to `ProviderCredentials` in `src/lib/mail/types.ts`
-4. Add tests in `src/__tests__/mail/providers/exchange.test.ts`
-
-### Intelligence / Classification
-
-The `@upgpt-ai/email-classifier` package is the correct place to improve heuristic accuracy.
-See [`UpGPT-ai/email-classifier`](https://github.com/UpGPT-ai/email-classifier) — contributions welcome there.
-
-The BYOK router in `src/lib/mail/ai/router.ts` should remain provider-agnostic — don't hardcode prompt templates for specific providers.
-
-## Pull Request Checklist
-
-- [ ] `npx tsc --noEmit` — 0 errors
-- [ ] `npm run test` — all tests pass
-- [ ] New public functions have JSDoc comments
-- [ ] New DB tables have RLS enabled + policy
-- [ ] No hardcoded API keys, URLs, or credentials
-- [ ] Added/updated tests for changed logic
-
-## Commit Style
-
-```
-type(scope): short description
-
-feat(providers): add Exchange EWS adapter
-fix(imap): handle Gmail 'Too many simultaneous connections' error
-docs(self-hosting): add nginx reverse proxy example
-test(encryption): add Ed25519 key generation roundtrip test
+```bash
+npm test                  # Vitest unit/integration  
+npm run test:coverage     # Coverage report
+npx playwright test       # E2E (if dev server is running)
 ```
 
-Types: `feat`, `fix`, `docs`, `test`, `chore`, `refactor`, `perf`
+New features must include tests. Pure functions in src/lib/ get unit tests. UI components get component tests. API routes get integration tests (mock Supabase).
+
+## Self-Hosted vs Hosted
+
+UpInbox is run by UpGPT.ai at mail.upinbox.ai (requires UpGPT subscription) and as a self-hosted MIT project. PRs should preserve the dual-deployment property — don't bake in UpGPT.ai-specific URLs or assumptions.
+
+## Pull Request Process
+
+1. Fork, branch from main
+2. Make changes with tests
+3. Run `npm run lint` and `npm run type-check`
+4. Open PR with clear description
+5. CI must pass
+
+## Security
+
+Report vulnerabilities privately to security@upgpt.ai. Do NOT open public issues for security bugs.
 
 ## License
 
-By submitting a PR, you agree your contribution is licensed under MIT.
+By contributing, you agree your contributions are licensed under MIT.

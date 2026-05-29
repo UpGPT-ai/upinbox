@@ -2,6 +2,7 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
+import { checkRateLimit, getRateLimitFromRequest } from '@/lib/rate-limit';
 
 interface TestBody {
   provider: string;
@@ -66,6 +67,15 @@ async function testGemini(key: string, model: string): Promise<void> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const key = getRateLimitFromRequest(request, 'ai:test');
+  const limit = checkRateLimit(key, { windowMs: 3600000, maxRequests: 10, identifier: 'ai:test' });
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { ok: false, error: 'Rate limit exceeded', retryAfter: Math.ceil((limit.retryAfterMs ?? 0) / 1000) },
+      { status: 429 }
+    );
+  }
+
   let body: TestBody;
   try {
     body = await request.json();

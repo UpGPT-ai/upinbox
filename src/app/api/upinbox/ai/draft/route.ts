@@ -3,6 +3,7 @@ export const dynamic = 'force-dynamic';
 
 import { NextRequest, NextResponse } from 'next/server';
 import { generateDraft } from '@/lib/ai/draft-generator';
+import { checkRateLimit, getRateLimitFromRequest } from '@/lib/rate-limit';
 
 interface DraftBody {
   // canonical field names
@@ -24,6 +25,15 @@ interface DraftBody {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
+  const key = getRateLimitFromRequest(request, 'ai:draft');
+  const limit = checkRateLimit(key, { windowMs: 3600000, maxRequests: 30, identifier: 'ai:draft' });
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded', retryAfter: Math.ceil((limit.retryAfterMs ?? 0) / 1000) },
+      { status: 429 }
+    );
+  }
+
   let raw: DraftBody;
   try {
     raw = await request.json();

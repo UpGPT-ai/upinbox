@@ -23,11 +23,21 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireEmailEntitlement } from '@/lib/billing/upinbox-entitlement';
 import { getMaxAccounts, getAccountUpgradeMessage, CAPABILITY } from '@/lib/billing/capabilities';
 import { createServerSupabaseClient } from '@/lib/supabase-server';
+import { checkRateLimit, getRateLimitFromRequest } from '@/lib/rate-limit';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
+  const rlKey = getRateLimitFromRequest(request, 'accounts:connect');
+  const limit = checkRateLimit(rlKey, { windowMs: 3600000, maxRequests: 5, identifier: 'accounts:connect' });
+  if (!limit.allowed) {
+    return NextResponse.json(
+      { ok: false, error: 'Rate limit exceeded', retryAfter: Math.ceil((limit.retryAfterMs ?? 0) / 1000) },
+      { status: 429 }
+    );
+  }
+
   // 1. Capability gate — caller must have the EMAIL capability.
   const result = await requireEmailEntitlement(request);
   if (!result.ok) {

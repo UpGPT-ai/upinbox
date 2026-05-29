@@ -1,8 +1,12 @@
 /**
- * Next.js Middleware — Supabase session refresh + auth guard.
+ * Next.js Middleware — Supabase session refresh + auth guard + CORS for mobile.
  *
  * Runs on every request. Refreshes the session cookie (prevents stale tokens)
  * and redirects unauthenticated users away from protected routes.
+ *
+ * Also applies permissive CORS headers to /api/upinbox/* so the UpLink mobile
+ * app (and other first-party clients) can connect to self-hosted UpInbox
+ * instances running on the user's own domain.
  */
 
 import { createServerClient } from '@supabase/ssr';
@@ -20,7 +24,39 @@ function isPublic(pathname: string): boolean {
   return PUBLIC_PATHS.some((p) => pathname.startsWith(p));
 }
 
+/**
+ * Apply CORS headers to a response for /api/upinbox/* paths.
+ *
+ * Users self-host UpInbox on their own domains, and the UpLink mobile app
+ * connects from arbitrary origins (custom schemes, localhost during dev,
+ * production app shells). Echo the request Origin when present, otherwise
+ * fall back to a permissive wildcard. Authentication is handled by the API
+ * routes themselves (bearer tokens / session cookies), so CORS is purely a
+ * browser-compat concern here.
+ */
+function applyCorsHeaders(response: NextResponse, request: NextRequest): NextResponse {
+  const origin = request.headers.get('origin') ?? '*';
+  response.headers.set('Access-Control-Allow-Origin', origin);
+  response.headers.set('Access-Control-Allow-Methods', 'GET, POST, PATCH, DELETE, OPTIONS');
+  response.headers.set('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  response.headers.set('Access-Control-Max-Age', '86400');
+  response.headers.set('Vary', 'Origin');
+  return response;
+}
+
+function isUpinboxApiPath(pathname: string): boolean {
+  return pathname.startsWith('/api/upinbox/');
+}
+
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl;
+
+  // CORS preflight for /api/upinbox/* — respond immediately with 204.
+  if (request.method === 'OPTIONS' && isUpinboxApiPath(pathname)) {
+    const preflight = new NextResponse(null, { status: 204 });
+    return applyCorsHeaders(preflight, request);
+  }
+
   let response = NextResponse.next({
     request: { headers: request.headers },
   });
@@ -49,8 +85,6 @@ export async function middleware(request: NextRequest) {
   // Refresh session — this is the key side-effect (updates cookies)
   const { data: { user } } = await supabase.auth.getUser();
 
-  const { pathname } = request.nextUrl;
-
   // Redirect authenticated users away from /login
   if (user && pathname === '/login') {
     return NextResponse.redirect(new URL('/inbox', request.url));
@@ -67,6 +101,12 @@ export async function middleware(request: NextRequest) {
   // server — a server-side redirect drops them and the session is lost.
   if (pathname === '/') {
     return response;
+  }
+
+  // Apply CORS headers to /api/upinbox/* responses so the UpLink mobile app
+  // (and other cross-origin clients) can read them.
+  if (isUpinboxApiPath(pathname)) {
+    return applyCorsHeaders(response, request);
   }
 
   return response;
