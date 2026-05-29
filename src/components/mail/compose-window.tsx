@@ -18,6 +18,7 @@ import { useAtom, useAtomValue } from 'jotai';
 import { composeDraftAtom, activeAccountIdAtom } from '@/atoms/mail';
 import { useSendEmail } from '@/hooks/use-emails';
 import { RichEditor, htmlToPlainText } from './rich-editor';
+import { SendLaterPicker } from '@/components/mail/send-later-picker';
 
 const UNDO_SECONDS = 5;
 
@@ -38,6 +39,7 @@ export function ComposeWindow() {
   const [windowState, setWindowState] = useState<WindowState>('open');
   const [showCc, setShowCc] = useState(false);
   const [showBcc, setShowBcc] = useState(false);
+  const [showSendLater, setShowSendLater] = useState(false);
   const [attachments, setAttachments] = useState<Attachment[]>([]);
   const [sendState, setSendState] = useState<'idle' | 'countdown' | 'sending' | 'sent' | 'error'>('idle');
   const [countdown, setCountdown] = useState(UNDO_SECONDS);
@@ -154,6 +156,25 @@ export function ComposeWindow() {
     setCountdown(UNDO_SECONDS);
   };
 
+  const handleScheduleSend = async (sendAt: Date) => {
+    setShowSendLater(false);
+    await fetch('/api/upinbox/send-later', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        accountId: draft.identityEmail ? accountId : accountId,
+        sendAt: sendAt.toISOString(),
+        to: draft.to,
+        cc: draft.cc,
+        bcc: draft.bcc,
+        subject: draft.subject,
+        body: draft.body,
+        isHtml: true,
+      }),
+    });
+    setDraft({ mode: 'closed', to: [], cc: [], bcc: [], subject: '', body: '' });
+  };
+
   const handleDiscard = () => {
     const hasContent = draft.body.replace(/<[^>]+>/g, '').trim() || draft.to.length || draft.subject;
     if (hasContent) { setShowDiscardConfirm(true); } else { close(); }
@@ -268,10 +289,27 @@ export function ComposeWindow() {
             {/* Footer */}
             <div className="flex items-center gap-2 px-3 py-2 border-t bg-gray-50 flex-shrink-0">
               {sendState === 'idle' && (
-                <button onClick={handleSend} disabled={!draft.to.length || !accountId}
-                  className="px-5 py-1.5 text-sm font-semibold rounded-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
-                  Send
-                </button>
+                <div className="flex items-center gap-1">
+                  <button onClick={handleSend} disabled={!draft.to.length || !accountId}
+                    className="px-5 py-1.5 text-sm font-semibold rounded-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    Send
+                  </button>
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowSendLater(v => !v)}
+                      title="Schedule send"
+                      className="p-2 rounded hover:bg-muted transition-colors text-muted-foreground"
+                    >
+                      🕐
+                    </button>
+                    {showSendLater && (
+                      <SendLaterPicker
+                        onSelect={handleScheduleSend}
+                        onClose={() => setShowSendLater(false)}
+                      />
+                    )}
+                  </div>
+                </div>
               )}
               {sendState === 'countdown' && (
                 <div className="flex items-center gap-3">

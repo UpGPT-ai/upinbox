@@ -5,7 +5,7 @@
  * and bulk action bar.
  */
 
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { VList } from 'virtua';
 import { useAtom, useAtomValue, useSetAtom } from 'jotai';
 import { useQueryClient } from '@tanstack/react-query';
@@ -16,6 +16,8 @@ import {
   isSearchActiveAtom,
   sortDirAtom,
   activeAccountIdAtom,
+  snoozeEmailIdAtom,
+  undoToastAtom,
 } from '@/atoms/mail';
 import { useEmails, useEmailMutations } from '@/hooks/use-emails';
 import { useMailboxes } from '@/hooks/use-mailboxes';
@@ -36,6 +38,11 @@ function formatSender(email: JmapEmail): string {
   const from = email.from?.[0];
   if (!from) return 'Unknown';
   return from.name || from.email;
+}
+
+/** Strip Re: / Fwd: prefixes from a subject to get the canonical thread key */
+function normalizeSubject(subject: string | undefined): string {
+  return (subject ?? '').replace(/^(Re|Fwd|Fw):\s*/gi, '').trim().toLowerCase();
 }
 
 // ─── Search Bar ───────────────────────────────────────────────────────────────
@@ -171,21 +178,40 @@ interface ListHeaderProps {
   mailboxName: string;
   mailboxId: string;
   accountId: string | null;
+  archiveMailboxId: string | null;
   onClear: () => void;
   onSelectAll: () => void;
 }
 
-function ListHeader({ selectedIds, allEmails, mailboxRole, mailboxName, mailboxId, accountId, onClear, onSelectAll }: ListHeaderProps) {
-  const { bulkDelete, bulkMarkRead, bulkFlag } = useEmailMutations();
+function ListHeader({
+  selectedIds,
+  allEmails,
+  mailboxRole,
+  mailboxName,
+  mailboxId,
+  accountId,
+  archiveMailboxId,
+  onClear,
+  onSelectAll,
+}: ListHeaderProps) {
+  const { bulkDelete, bulkMarkRead, bulkFlag, moveEmail } = useEmailMutations();
+  const setUndoToast = useSetAtom(undoToastAtom);
   const queryClient = useQueryClient();
   const [emptying, setEmptying] = useState(false);
+  const [bulkArchiving, setBulkArchiving] = useState(false);
   const ids = [...selectedIds];
   const count = ids.length;
   const total = allEmails.length;
   const allSelected = total > 0 && count === total;
   const partialSelected = count > 0 && !allSelected;
   const anySelected = count > 0;
-  const isPending = bulkDelete.isPending || bulkMarkRead.isPending || bulkFlag.isPending || emptying;
+  const isPending =
+    bulkDelete.isPending ||
+    bulkMarkRead.isPending ||
+    bulkFlag.isPending ||
+    moveEmail.isPending ||
+    emptying ||
+    bulkArchiving;
   const isTrashLike = mailboxRole && TRASH_ROLES.has(mailboxRole);
 
   const run = async (fn: () => Promise<void>) => { await fn(); onClear(); };
@@ -193,6 +219,39 @@ function ListHeader({ selectedIds, allEmails, mailboxRole, mailboxName, mailboxI
   const handleMasterCheck = () => {
     if (allSelected) onClear();
     else onSelectAll();
+  };
+
+  const handleBulkArchive = async () => {
+    if (!archiveMailboxId) return;
+    setBulkArchiving(true);
+    try {
+      await Promise.all(
+        ids.map((id) => moveEmail.mutateAsync({ emailId: id, toMailboxId: archiveMailboxId }))
+      );
+      setUndoToast({
+        id: `bulk-archive-${Date.now()}`,
+        message: `${count} email${count === 1 ? '' : 's'} archived`,
+        onUndo: () => {
+          // Undo: invalidate list (full undo would need original mailbox IDs — phase 2)
+          queryClient.invalidateQueries({ queryKey: ['upinbox', 'emails'] });
+        },
+      });
+      onClear();
+    } finally {
+      setBulkArchiving(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    await bulkDelete.mutateAsync(ids);
+    setUndoToast({
+      id: `bulk-delete-${Date.now()}`,
+      message: `${count} email${count === 1 ? '' : 's'} deleted`,
+      onUndo: () => {
+        queryClient.invalidateQueries({ queryKey: ['upinbox', 'emails'] });
+      },
+    });
+    onClear();
   };
 
   const handleEmptyFolder = async () => {
@@ -213,7 +272,6 @@ function ListHeader({ selectedIds, allEmails, mailboxRole, mailboxName, mailboxI
         return;
       }
       onClear();
-      // Invalidate so the list refreshes to empty
       queryClient.invalidateQueries({ queryKey: ['upinbox', 'emails'] });
     } finally {
       setEmptying(false);
@@ -261,8 +319,12 @@ function ListHeader({ selectedIds, allEmails, mailboxRole, mailboxName, mailboxI
             </button>
           )}
           <div className="w-px h-4 bg-border mx-1" />
+          {archiveMailboxId && mailboxRole !== 'archive' && (
+            <ActionBtn label="Archive" icon="📦" pending={bulkArchiving} disabled={isPending}
+              onClick={handleBulkArchive} />
+          )}
           <ActionBtn label="Delete" icon="🗑" pending={bulkDelete.isPending} disabled={isPending}
-            onClick={() => run(() => bulkDelete.mutateAsync(ids))} danger />
+            onClick={handleBulkDelete} danger />
           <ActionBtn label="Read" icon="✉" pending={false} disabled={isPending}
             onClick={() => run(() => bulkMarkRead.mutateAsync({ emailIds: ids, read: true }))} />
           <ActionBtn label="Unread" icon="✉̈" pending={false} disabled={isPending}
@@ -316,7 +378,10 @@ function ActionBtn({ label, icon, pending, disabled, onClick, danger }: {
         danger ? 'hover:bg-destructive/10 hover:text-destructive text-muted-foreground'
                : 'hover:bg-muted text-muted-foreground hover:text-foreground'
       }`}>
-      <span>{icon}</span>
+      {pending
+        ? <span className="w-3 h-3 border border-current border-t-transparent rounded-full animate-spin" />
+        : <span>{icon}</span>
+      }
       <span className="hidden sm:inline">{label}</span>
     </button>
   );
@@ -328,18 +393,55 @@ interface EmailRowProps {
   email: JmapEmail;
   isOpen: boolean;
   isSelected: boolean;
+  threadCount: number;
+  archiveMailboxId: string | null;
   onOpen: () => void;
   onSelect: (e: React.MouseEvent) => void;
 }
 
-function EmailRow({ email, isOpen, isSelected, onOpen, onSelect }: EmailRowProps) {
-  const { toggleFlagged } = useEmailMutations();
+function EmailRow({ email, isOpen, isSelected, threadCount, archiveMailboxId, onOpen, onSelect }: EmailRowProps) {
+  const { toggleFlagged, deleteEmail, moveEmail } = useEmailMutations();
+  const setSnoozeEmailId = useSetAtom(snoozeEmailIdAtom);
+  const setUndoToast = useSetAtom(undoToastAtom);
+  const [hovering, setHovering] = useState(false);
   const isRead = email.keywords?.['$seen'] ?? false;
   const isFlagged = email.keywords?.['$flagged'] ?? false;
+
+  const handleArchive = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!archiveMailboxId) return;
+    moveEmail.mutate({ emailId: email.id, toMailboxId: archiveMailboxId });
+    setUndoToast({
+      id: `archive-${email.id}-${Date.now()}`,
+      message: 'Email archived',
+      onUndo: () => {
+        // Full undo needs original mailbox — invalidate for now
+      },
+    });
+  };
+
+  const handleDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    deleteEmail.mutate(email.id);
+    setUndoToast({
+      id: `delete-${email.id}-${Date.now()}`,
+      message: 'Email deleted',
+      onUndo: () => {
+        // Full undo needs restore API — invalidate for now
+      },
+    });
+  };
+
+  const handleSnooze = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSnoozeEmailId(email.id);
+  };
 
   return (
     <div
       onClick={onOpen}
+      onMouseEnter={() => setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
       className={`
         relative flex items-start gap-3 px-4 py-3 cursor-pointer border-b
         transition-colors select-none
@@ -369,9 +471,17 @@ function EmailRow({ email, isOpen, isSelected, onOpen, onSelect }: EmailRowProps
           <span className={`text-sm truncate ${!isRead ? 'font-semibold' : 'font-medium'}`}>
             {formatSender(email)}
           </span>
-          <span className="text-xs text-muted-foreground flex-shrink-0">
-            {formatDate(email.receivedAt ?? '')}
-          </span>
+          <div className="flex items-center gap-1.5 flex-shrink-0">
+            {/* Thread count badge */}
+            {threadCount > 1 && (
+              <span className="inline-flex items-center justify-center min-w-[1.125rem] h-[1.125rem] px-1 rounded-full bg-muted text-muted-foreground text-[10px] font-medium tabular-nums">
+                {threadCount}
+              </span>
+            )}
+            <span className="text-xs text-muted-foreground">
+              {formatDate(email.receivedAt ?? '')}
+            </span>
+          </div>
         </div>
         <div className="text-sm truncate mt-0.5">{email.subject || '(no subject)'}</div>
         <div className="text-xs text-muted-foreground truncate mt-0.5">{email.preview ?? ''}</div>
@@ -380,13 +490,59 @@ function EmailRow({ email, isOpen, isSelected, onOpen, onSelect }: EmailRowProps
         )}
       </div>
 
-      <button
-        onClick={(e) => { e.stopPropagation(); toggleFlagged.mutate({ emailId: email.id, flagged: !isFlagged }); }}
-        className="mt-1 flex-shrink-0 text-muted-foreground hover:text-amber-500 transition-colors"
-        title={isFlagged ? 'Unflag' : 'Flag'}
-      >
-        {isFlagged ? '⭐' : '☆'}
-      </button>
+      {/* Hover quick-actions (right side) */}
+      {hovering ? (
+        <div
+          className="flex items-center gap-0.5 mt-0.5 flex-shrink-0"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Snooze */}
+          <button
+            onClick={handleSnooze}
+            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+            title="Snooze"
+          >
+            🔔
+          </button>
+          {/* Archive — show only when archive mailbox is available */}
+          {archiveMailboxId && (
+            <button
+              onClick={handleArchive}
+              disabled={moveEmail.isPending}
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+              title="Archive"
+            >
+              📦
+            </button>
+          )}
+          {/* Delete */}
+          <button
+            onClick={handleDelete}
+            disabled={deleteEmail.isPending}
+            className="p-1 rounded hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors disabled:opacity-50"
+            title="Delete"
+          >
+            🗑️
+          </button>
+          {/* Flag */}
+          <button
+            onClick={(e) => { e.stopPropagation(); toggleFlagged.mutate({ emailId: email.id, flagged: !isFlagged }); }}
+            className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-amber-500 transition-colors"
+            title={isFlagged ? 'Unflag' : 'Flag'}
+          >
+            {isFlagged ? '⭐' : '☆'}
+          </button>
+        </div>
+      ) : (
+        /* Non-hover: show flag only */
+        <button
+          onClick={(e) => { e.stopPropagation(); toggleFlagged.mutate({ emailId: email.id, flagged: !isFlagged }); }}
+          className="mt-1 flex-shrink-0 text-muted-foreground hover:text-amber-500 transition-colors"
+          title={isFlagged ? 'Unflag' : 'Flag'}
+        >
+          {isFlagged ? '⭐' : '☆'}
+        </button>
+      )}
     </div>
   );
 }
@@ -408,6 +564,31 @@ export function EmailList({ mailboxId }: EmailListProps) {
   const mailbox = mailboxes.find((m) => m.id === mailboxId);
   const mailboxRole = mailbox?.role ?? null;
   const mailboxName = mailbox?.name ?? 'folder';
+  const archiveMailbox = mailboxes.find((m) => m.role === 'archive');
+  const archiveMailboxId = archiveMailbox?.id ?? null;
+
+  /**
+   * Build a map of normalized-subject -> count of emails sharing that subject.
+   * Also respects inReplyTo: any email with inReplyTo gets a minimum count of 2
+   * to indicate it is part of a thread.
+   */
+  const threadCountMap = useMemo(() => {
+    const subjCount: Record<string, number> = {};
+    for (const e of emails) {
+      const key = normalizeSubject(e.subject);
+      if (!key) continue;
+      subjCount[key] = (subjCount[key] ?? 0) + 1;
+    }
+    return subjCount;
+  }, [emails]);
+
+  const getThreadCount = (email: JmapEmail): number => {
+    const key = normalizeSubject(email.subject);
+    const subjectCount = key ? (threadCountMap[key] ?? 1) : 1;
+    // If email has inReplyTo, it is part of a thread (at minimum 2)
+    if (email.inReplyTo && email.inReplyTo.length > 0 && subjectCount < 2) return 2;
+    return subjectCount;
+  };
 
   const handleSelect = (emailId: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -436,6 +617,7 @@ export function EmailList({ mailboxId }: EmailListProps) {
           mailboxName={mailboxName}
           mailboxId={mailboxId}
           accountId={accountId}
+          archiveMailboxId={archiveMailboxId}
           onClear={clearSelection}
           onSelectAll={selectAll}
         />
@@ -473,6 +655,8 @@ export function EmailList({ mailboxId }: EmailListProps) {
                 email={email}
                 isOpen={openEmailId === email.id}
                 isSelected={selectedIds.has(email.id)}
+                threadCount={getThreadCount(email)}
+                archiveMailboxId={archiveMailboxId}
                 onOpen={() => setOpenEmailId(email.id)}
                 onSelect={(e) => handleSelect(email.id, e)}
               />

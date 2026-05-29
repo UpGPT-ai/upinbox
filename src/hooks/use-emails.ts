@@ -138,6 +138,57 @@ export function useEmailMutations() {
     onSuccess: invalidateEmailList,
   });
 
+  /** Move a single email to the Archive mailbox */
+  const archiveEmail = useMutation({
+    mutationFn: async ({ emailId, archiveMailboxId }: { emailId: string; archiveMailboxId: string }) => {
+      const res = await fetch(`/api/upinbox/emails/${emailId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId,
+          keywords: {},
+          mailboxId: archiveMailboxId,
+        }),
+      });
+      if (!res.ok) throw new Error(`archiveEmail failed: ${res.status}`);
+    },
+    onSuccess: invalidateEmailList,
+  });
+
+  /** Snooze a single email — re-surfaces it at the given time */
+  const snoozeEmail = useMutation({
+    mutationFn: async ({ emailId, unsnoozeAt }: { emailId: string; unsnoozeAt: Date }) => {
+      const res = await fetch(`/api/upinbox/emails/${emailId}/snooze`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accountId,
+          unsnoozeAt: unsnoozeAt.toISOString(),
+        }),
+      });
+      if (!res.ok) throw new Error(`snoozeEmail failed: ${res.status}`);
+    },
+    onSuccess: () => {
+      invalidateEmailList();
+      queryClient.invalidateQueries({ queryKey: ['upinbox', 'snoozes'] });
+    },
+  });
+
+  /** Remove snooze from a single email */
+  const unsnoozeEmail = useMutation({
+    mutationFn: async (emailId: string) => {
+      const res = await fetch(
+        `/api/upinbox/emails/${emailId}/snooze?accountId=${accountId}`,
+        { method: 'DELETE' }
+      );
+      if (!res.ok) throw new Error(`unsnoozeEmail failed: ${res.status}`);
+    },
+    onSuccess: () => {
+      invalidateEmailList();
+      queryClient.invalidateQueries({ queryKey: ['upinbox', 'snoozes'] });
+    },
+  });
+
   /** Mark a single email read or unread */
   const markRead = useMutation({
     mutationFn: async ({ emailId, read }: { emailId: string; read: boolean }) => {
@@ -202,7 +253,18 @@ export function useEmailMutations() {
     onSuccess: invalidateEmailList,
   });
 
-  return { markRead, toggleFlagged, moveEmail, deleteEmail, bulkDelete, bulkMarkRead, bulkFlag };
+  return {
+    markRead,
+    toggleFlagged,
+    moveEmail,
+    deleteEmail,
+    bulkDelete,
+    bulkMarkRead,
+    bulkFlag,
+    archiveEmail,
+    snoozeEmail,
+    unsnoozeEmail,
+  };
 }
 
 // ─── Send email ───────────────────────────────────────────────────────────────
@@ -239,5 +301,22 @@ export function useSendEmail() {
       // Invalidate sent folder so it refreshes
       queryClient.invalidateQueries({ queryKey: ['upinbox', 'emails'] });
     },
+  });
+}
+
+// ─── Snoozed emails list ──────────────────────────────────────────────────────
+
+export function useSnoozedEmails(accountId: string | null) {
+  return useQuery({
+    queryKey: ['upinbox', 'snoozes', accountId],
+    enabled: !!accountId,
+    queryFn: async (): Promise<{ id: string; message_id: string; unsnooze_at: string }[]> => {
+      // GET /api/upinbox/snoozes?accountId=... — route to be added
+      const res = await fetch(`/api/upinbox/snoozes?accountId=${accountId}`);
+      if (!res.ok) return [];
+      const data = await res.json();
+      return data.snoozes ?? [];
+    },
+    staleTime: 60 * 1000,
   });
 }

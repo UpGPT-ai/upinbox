@@ -5,10 +5,13 @@
  *
  * Features:
  * - Renders HTML in sandboxed iframe; plain-text fallback
+ * - Tracker stripper: rewrites all img src= through proxy, counts tracking pixels
  * - Reply / Reply-all / Forward wire into composeDraftAtom
  * - Mark as read automatically on open
  * - Label chips + apply/remove labels dropdown
  * - Delete, flag/unflag
+ * - Archive button (moves to archive mailbox)
+ * - Snooze button with SnoozeSelector dropdown
  */
 
 import { useEffect, useCallback, useState } from 'react';
@@ -17,6 +20,8 @@ import { openEmailIdAtom, activeAccountIdAtom, composeDraftAtom } from '@/atoms/
 import { useEmail, useEmailMutations } from '@/hooks/use-emails';
 import { useAccounts } from '@/hooks/use-accounts';
 import { useLabels, useApplyLabel, useEmailLabels, type Label } from '@/hooks/use-labels';
+import { useMailboxes } from '@/hooks/use-mailboxes';
+import { SnoozeSelector } from '@/components/mail/snooze-selector';
 import type { JmapEmail } from '@/lib/mail/types';
 import type { ComposeDraft } from '@/atoms/mail';
 
@@ -47,12 +52,49 @@ function AddressList({ addresses }: { addresses: { email: string; name?: string 
   );
 }
 
-function EmailBody({ email }: { email: JmapEmail }) {
+// ── Tracker stripper ──────────────────────────────────────────────────────────
+
+function stripTrackers(html: string): { html: string; trackerCount: number } {
+  let trackerCount = 0;
+  // Rewrite all img src attributes to go through proxy
+  const rewritten = html.replace(
+    /(<img[^>]*\s)src=["']([^"']+)["']/gi,
+    (match, prefix, srcUrl) => {
+      if (!srcUrl.startsWith('http')) return match;
+      const proxied = '/api/upinbox/proxy?url=' + encodeURIComponent(srcUrl);
+      // Heuristic: 1x1 images and known tracking patterns
+      if (srcUrl.includes('tracking') || srcUrl.includes('open') || srcUrl.includes('pixel') ||
+          srcUrl.includes('beacon') || srcUrl.includes('track') || srcUrl.match(/\/[a-f0-9]{20,}\.gif/)) {
+        trackerCount++;
+      }
+      return prefix + 'src="' + proxied + '"';
+    }
+  );
+  return { html: rewritten, trackerCount };
+}
+
+// ── EmailBody ─────────────────────────────────────────────────────────────────
+
+function EmailBody({
+  email,
+  onTrackerCount,
+}: {
+  email: JmapEmail;
+  onTrackerCount?: (n: number) => void;
+}) {
   const htmlPart = email.htmlBody?.[0];
   const textPart = email.textBody?.[0];
 
   if (htmlPart?.partId && email.bodyValues?.[htmlPart.partId]) {
-    const html = email.bodyValues[htmlPart.partId].value;
+    const rawHtml = email.bodyValues[htmlPart.partId].value;
+    const { html, trackerCount } = stripTrackers(rawHtml);
+
+    // Report tracker count to parent
+    if (onTrackerCount) {
+      // Use a microtask to avoid calling setState during render
+      Promise.resolve().then(() => onTrackerCount(trackerCount));
+    }
+
     return (
       <iframe
         srcDoc={`<!DOCTYPE html>
@@ -250,15 +292,23 @@ export function EmailDetail() {
   const accountId = useAtomValue(activeAccountIdAtom);
   const [, setComposeDraft] = useAtom(composeDraftAtom);
   const { data: email, isLoading, isError } = useEmail(emailId);
-  const { deleteEmail, markRead } = useEmailMutations();
+  const { deleteEmail, markRead, snoozeEmail, moveEmail } = useEmailMutations();
   const { data: accounts = [] } = useAccounts();
+  const { data: mailboxes = [] } = useMailboxes(accountId);
   const [showLabelMenu, setShowLabelMenu] = useState(false);
+  const [showSnooze, setShowSnooze] = useState(false);
+  const [trackerCount, setTrackerCount] = useState(0);
 
   const identityEmail = accounts.find((a) => a.id === accountId)?.email_address;
 
   // The IMAP UID is stored in the id field (or we use the email's id as uid)
   const emailUid = email?.id ?? null;
   const { data: emailLabels = [] } = useEmailLabels(accountId, emailUid);
+
+  // Reset tracker count when email changes
+  useEffect(() => {
+    setTrackerCount(0);
+  }, [emailId]);
 
   // Mark as read when opened (if unread)
   useEffect(() => {
@@ -284,6 +334,27 @@ export function EmailDetail() {
     if (!email) return;
     setComposeDraft(buildForwardDraft(email, identityEmail));
   }, [email, identityEmail, setComposeDraft]);
+
+  const handleArchive = useCallback(() => {
+    if (!emailId) return;
+    const archiveMailbox = mailboxes.find((m) => m.role === 'archive');
+    if (!archiveMailbox) return;
+    moveEmail.mutate({ emailId, toMailboxId: archiveMailbox.id });
+    setOpenEmailId(null);
+  }, [emailId, mailboxes, moveEmail, setOpenEmailId]);
+
+  const handleSnooze = useCallback((unsnoozeAt: Date) => {
+    if (!emailId) return;
+    snoozeEmail.mutate({ emailId, unsnoozeAt });
+    setShowSnooze(false);
+    // Toast: "Snoozed until [date]"
+    const label = unsnoozeAt.toLocaleString([], {
+      weekday: 'short', month: 'short', day: 'numeric',
+      hour: '2-digit', minute: '2-digit',
+    });
+    // Use browser alert as lightweight toast if no toast library is wired up
+    console.info(`Snoozed until ${label}`);
+  }, [emailId, snoozeEmail]);
 
   if (!emailId) {
     return (
@@ -325,9 +396,17 @@ export function EmailDetail() {
       {/* Header */}
       <div className="px-6 py-4 border-b space-y-2 flex-shrink-0">
         <div className="flex items-start justify-between gap-4">
-          <h1 className="text-lg font-semibold leading-tight">
-            {email.subject || '(no subject)'}
-          </h1>
+          <div className="flex flex-col gap-1 min-w-0">
+            <h1 className="text-lg font-semibold leading-tight">
+              {email.subject || '(no subject)'}
+            </h1>
+            {/* Tracker badge */}
+            {trackerCount > 0 && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 self-start">
+                🛡️ {trackerCount} tracker{trackerCount !== 1 ? 's' : ''} stripped
+              </span>
+            )}
+          </div>
           {/* Action buttons */}
           <div className="flex items-center gap-0.5 flex-shrink-0 relative">
             <button
@@ -355,6 +434,34 @@ export function EmailDetail() {
               <span className="hidden sm:inline text-xs">Fwd</span>
             </button>
             <div className="w-px h-4 bg-border mx-1" />
+            {/* Archive button */}
+            <button
+              onClick={handleArchive}
+              className="px-2 py-1 rounded hover:bg-muted transition-colors text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+              title="Archive (E)"
+            >
+              <span>📦</span>
+              <span className="hidden sm:inline text-xs">Archive</span>
+            </button>
+            {/* Snooze button */}
+            <div className="relative">
+              <button
+                onClick={() => setShowSnooze((v) => !v)}
+                className="px-2 py-1 rounded hover:bg-muted transition-colors text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+                title="Snooze (H)"
+              >
+                <span>🔔</span>
+                <span className="hidden sm:inline text-xs">Snooze</span>
+              </button>
+              {showSnooze && accountId && email && (
+                <SnoozeSelector
+                  emailId={email.id}
+                  accountId={accountId}
+                  onSnooze={handleSnooze}
+                  onClose={() => setShowSnooze(false)}
+                />
+              )}
+            </div>
             {/* Label button */}
             <div className="relative">
               <button
@@ -430,7 +537,7 @@ export function EmailDetail() {
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto">
-        <EmailBody email={email} />
+        <EmailBody email={email} onTrackerCount={setTrackerCount} />
       </div>
     </div>
   );

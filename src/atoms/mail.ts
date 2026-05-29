@@ -200,3 +200,17 @@ export const hasAiConfiguredAtom = atom((get) => {
   const uplink = get(useUplinkAtom);
   return key.length > 0 || uplink;
 });
+
+// Toast/undo state
+export interface UndoToastState {
+  id: string;
+  message: string;
+  onUndo: () => void;
+}
+export const undoToastAtom = atom<UndoToastState | null>(null);
+
+// Snooze panel open state (which email is being snoozed)
+export const snoozeEmailIdAtom = atom<string | null>(null);
+
+// Current email list cursor (for j/k keyboard nav)
+export const emailCursorAtom = atom<number>(0);

@@ -24,8 +24,14 @@ import {
   composeDraftAtom,
   unifiedInboxAtom,
   toolbarCollapsedAtom,
+  commandPaletteOpenAtom,
+  undoToastAtom,
+  openEmailIdAtom,
+  emailCursorAtom,
 } from '@/atoms/mail';
 import { useAccounts } from '@/hooks/use-accounts';
+import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
+import { useMailboxes } from '@/hooks/use-mailboxes';
 import { MailSidebar } from '@/components/layout/sidebar';
 import { EmailList } from '@/components/mail/email-list';
 import { UnifiedEmailList } from '@/components/mail/unified-email-list';
@@ -35,6 +41,8 @@ import { FeedEmailList } from '@/components/screener/feed-email-list';
 import { FocusList } from '@/components/screener/focus-list';
 import { ConnectAccountWizard } from '@/components/ai/connect-account-wizard';
 import { ComposeWindow } from '@/components/mail/compose-window';
+import { CommandPalette } from '@/components/mail/command-palette';
+import { UndoToast } from '@/components/mail/undo-toast';
 import type { FeedType } from '@/components/screener/feed-tabs';
 
 function EmptyState() {
@@ -181,6 +189,11 @@ export function InboxLayout() {
   const [isFullscreen, setIsFullscreen] = useState(false);
   const { data: accounts = [], isLoading } = useAccounts();
 
+  const [commandPaletteOpen, setCommandPaletteOpen] = useAtom(commandPaletteOpenAtom);
+  const [undoToast, setUndoToast] = useAtom(undoToastAtom);
+  const [, setOpenEmailId] = useAtom(openEmailIdAtom);
+  const [emailCursor, setEmailCursor] = useAtom(emailCursorAtom);
+
   const hasAccounts = accounts.length > 0;
 
   // Track real fullscreen state (user can exit with ESC)
@@ -197,6 +210,25 @@ export function InboxLayout() {
       document.exitFullscreen().catch(console.error);
     }
   };
+
+  useKeyboardShortcuts({
+    onNavigateNext: () => setEmailCursor(c => c + 1),
+    onNavigatePrev: () => setEmailCursor(c => Math.max(0, c - 1)),
+    onArchive: () => { /* dispatch archive to active email */ },
+    onDelete: () => { /* dispatch delete to active email */ },
+    onReply: () => { /* open reply compose */ },
+    onReplyAll: () => { /* open reply-all compose */ },
+    onForward: () => { /* open forward compose */ },
+    onStar: () => { /* toggle flag on active email */ },
+    onCompose: () => setComposeDraft({ mode: 'new', to: [], cc: [], bcc: [], subject: '', body: '' }),
+    onSearch: () => { /* focus search input */ },
+    onCommandPalette: () => setCommandPaletteOpen(true),
+    onHelp: () => setCommandPaletteOpen(true),
+    onMarkRead: () => { /* mark active email read */ },
+    onMarkUnread: () => { /* mark active email unread */ },
+    onSnooze: () => { /* open snooze for active email */ },
+    onEscape: () => setCommandPaletteOpen(false),
+  }, hasAccounts);
 
   /** Render the list panel based on active feed */
   const renderListPanel = () => {
@@ -253,6 +285,15 @@ export function InboxLayout() {
             )}
 
             <div className="flex-1" />
+
+            {/* Cmd-K command palette shortcut pill */}
+            <button
+              onClick={() => setCommandPaletteOpen(true)}
+              title="Open command palette (⌘K)"
+              className="flex items-center gap-1 px-2 py-1 text-xs text-muted-foreground border rounded-md hover:bg-muted hover:text-foreground transition-colors font-mono"
+            >
+              <span>⌘K</span>
+            </button>
 
             {/* Reading pane toggle */}
             <div className="flex items-center gap-1 border rounded-md p-0.5">
@@ -338,6 +379,26 @@ export function InboxLayout() {
 
       {/* Compose window — fixed overlay, always rendered */}
       <ComposeWindow />
+
+      {/* Command palette */}
+      <CommandPalette
+        open={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
+        onAction={(actionId) => {
+          setCommandPaletteOpen(false);
+          if (actionId === 'compose') setComposeDraft({ mode: 'new', to: [], cc: [], bcc: [], subject: '', body: '' });
+          if (actionId === 'toggle-sidebar') setSidebarCollapsed(v => !v);
+        }}
+      />
+
+      {/* Undo toast */}
+      {undoToast && (
+        <UndoToast
+          message={undoToast.message}
+          onUndo={() => { undoToast.onUndo(); setUndoToast(null); }}
+          onDismiss={() => setUndoToast(null)}
+        />
+      )}
     </div>
   );
 }
