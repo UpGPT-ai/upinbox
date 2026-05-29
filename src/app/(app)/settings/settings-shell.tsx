@@ -3,7 +3,7 @@
 /**
  * Settings shell — tabbed settings pages.
  *
- * Tabs: General | AI & Privacy | Accounts | Screener Rules | Notifications | Auto-Archive | Billing | MCP Tokens | Signatures | AI & Draft
+ * Tabs: General | AI & Privacy | Accounts | Screener Rules | Notifications | Auto-Archive | Billing | MCP Tokens | Signatures | AI & Draft | Aliases
  */
 
 import { useState } from 'react';
@@ -14,11 +14,12 @@ import { ByokPanel } from '@/components/ai/byok-panel';
 import { DraftProfilePanel } from '@/components/ai/draft-profile-panel';
 import { SignatureManager } from '@/components/mail/signature-manager';
 import { AutoArchiveRules } from '@/components/mail/auto-archive-rules';
+import { AliasManager } from '@/components/mail/alias-manager';
 import { NotificationRules } from '@/components/settings/notification-rules';
 import { BillingPanel } from './billing-panel';
 import { McpTokensPanel } from './mcp-tokens-panel';
 
-type Tab = 'general' | 'ai' | 'accounts' | 'screener' | 'notifications' | 'auto-archive' | 'billing' | 'mcp' | 'signatures' | 'ai-draft';
+type Tab = 'general' | 'ai' | 'accounts' | 'screener' | 'notifications' | 'auto-archive' | 'billing' | 'mcp' | 'signatures' | 'ai-draft' | 'aliases';
 
 const UNDO_OPTIONS: { label: string; value: number }[] = [
   { label: '5s',  value: 5000 },
@@ -84,6 +85,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'mcp', label: 'MCP Tokens', icon: '🔌' },
   { id: 'signatures', label: 'Signatures', icon: '✍️' },
   { id: 'ai-draft', label: 'AI & Draft', icon: '✨' },
+  { id: 'aliases', label: 'Aliases', icon: '🎭' },
 ];
 
 export function SettingsShell() {
@@ -187,6 +189,15 @@ export function SettingsShell() {
             <div className="border-t pt-8 mt-8">
               <DraftProfilePanel />
             </div>
+          </div>
+        )}
+        {activeTab === 'aliases' && (
+          <div className="space-y-4">
+            {activeAccountId ? (
+              <AliasManager accountId={activeAccountId} />
+            ) : (
+              <p className="text-sm text-muted-foreground">Select an account to manage aliases.</p>
+            )}
           </div>
         )}
       </div>
