@@ -1,95 +1,29 @@
-# UpInbox — Self-Host Docker Compose
-# 
-# Quick start:
-#   cp env.example .env
-#   # Edit .env — set PLATFORM_ENCRYPTION_KEY, POSTGRES_PASSWORD
-#   docker compose up -d
+# UpInbox — Minimal self-hosting docker-compose example.
 #
-# Then visit http://localhost:3001 → connect your Gmail or Outlook.
+# This is a minimal example to get UpInbox running in a single container.
+# Production users should put a reverse proxy (Caddy or Nginx) in front of
+# this service to terminate SSL/TLS and forward to port 3000.
 #
-# For @yourdomain.com email addresses, configure Stalwart (see docs/SELF-HOSTING.md).
-# The app works without Stalwart — just connect an existing Gmail/Outlook account.
+# See SELF-HOSTING.md for full production setup, reverse proxy examples,
+# backup guidance, and operational notes.
 
 services:
-  # ─── UpInbox Web App ─────────────────────────────────────────────────────────
   upinbox:
-    image: ghcr.io/upgpt-ai/upinbox:latest
+    build: .
     container_name: upinbox
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "3000:3000"
     environment:
-      # ── Required ──────────────────────────────────────────────────────────────
+      - NODE_ENV=production
       - NEXT_PUBLIC_SUPABASE_URL=${NEXT_PUBLIC_SUPABASE_URL}
       - NEXT_PUBLIC_SUPABASE_ANON_KEY=${NEXT_PUBLIC_SUPABASE_ANON_KEY}
       - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
-      # This is YOUR key. UpInbox never sees it. 32-byte hex: openssl rand -hex 32
-      - PLATFORM_ENCRYPTION_KEY=${PLATFORM_ENCRYPTION_KEY}
-      - NEXTAUTH_SECRET=${NEXTAUTH_SECRET}
-      - NEXTAUTH_URL=${NEXTAUTH_URL:-http://localhost:3001}
-      - NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL:-http://localhost:3001}
-      - INSTANCE_DOMAIN=${INSTANCE_DOMAIN:-localhost}
-      # ── Intelligence API ──────────────────────────────────────────────────────
-      # Provides 95% accuracy classification. Leave as-is.
-      # Community tier (no LICENSE_JWT): falls back to heuristic + BYOK.
-      - INTELLIGENCE_API_URL=https://api.upinbox.ai/v1/intelligence
-      # ── License (Business/Enterprise) ─────────────────────────────────────────
-      # Get at https://upinbox.ai/licenses — blank = Community tier (≤10 users)
-      - LICENSE_JWT=${LICENSE_JWT:-}
-      # ── Stalwart (optional — for @yourdomain.com addresses) ───────────────────
-      - STALWART_ADMIN_SECRET=${STALWART_ADMIN_SECRET:-}
-      - STALWART_JMAP_URL=${STALWART_JMAP_URL:-http://stalwart:8080}
-    depends_on:
-      postgres:
-        condition: service_healthy
+      - ENCRYPTION_KEY=${ENCRYPTION_KEY}
+      - CRON_SECRET=${CRON_SECRET}
+      - UPGPT_LICENSE_DEV_MODE=false
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/api/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:3000/api/upinbox/health"]
       interval: 30s
       timeout: 10s
       retries: 3
-
-  # ─── Stalwart Mail Server (optional) ─────────────────────────────────────────
-  # Only needed if you want @yourdomain.com email addresses.
-  # Skip this service if you're connecting Gmail or Outlook.
-  stalwart:
-    image: stalwartlabs/mail-server:latest
-    container_name: upinbox-stalwart
-    restart: unless-stopped
-    ports:
-      - "25:25"       # SMTP inbound
-      - "465:465"     # SMTPS
-      - "587:587"     # SMTP submission
-      - "993:993"     # IMAPS
-      - "8080:8080"   # JMAP + admin API
-    volumes:
-      - stalwart-data:/opt/stalwart-mail
-      - ./config/stalwart:/etc/stalwart:ro
-    profiles:
-      # Only started when you explicitly include: docker compose --profile mail up
-      - mail
-
-  # ─── PostgreSQL ───────────────────────────────────────────────────────────────
-  # Only used if you're NOT connecting to a hosted Supabase project.
-  # For most self-hosters, use Supabase (hosted or self-hosted) and skip this.
-  postgres:
-    image: postgres:16-alpine
-    container_name: upinbox-postgres
-    restart: unless-stopped
-    environment:
-      - POSTGRES_DB=upinbox
-      - POSTGRES_USER=${POSTGRES_USER:-upinbox}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-upinbox}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    profiles:
-      # Only started when you need a local Postgres: docker compose --profile db up
-      - db
-
-volumes:
-  stalwart-data:
-  postgres-data:

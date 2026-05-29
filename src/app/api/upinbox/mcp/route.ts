@@ -7,10 +7,29 @@
  * Protocol: JSON-RPC 2.0 over HTTP POST
  * Auth: Bearer token (upinbox_mcp_* format)
  *
- * Supported methods:
- *   initialize       — return server capabilities and tool list
- *   tools/list       — list available tools
- *   tools/call       — execute a tool
+ * ───────────────────────────────────────────────────────────────────────────
+ * TWO-LAYER AUTHORIZATION
+ * ───────────────────────────────────────────────────────────────────────────
+ *
+ * The MCP bearer token authenticates the CLIENT (i.e. "this AI assistant is
+ * allowed to talk to UpInbox on behalf of user X"). But authenticating the
+ * client is not the same as being entitled to use the MCP server.
+ *
+ * MCP server access is a paid capability on the user's UpGPT subscription —
+ * the `mcp` capability. A user can hold a valid MCP token (issued before they
+ * downgraded, or while exploring the feature) yet not have the `mcp`
+ * capability on their current UpGPT plan. In that case we must refuse the
+ * request even though the token is technically valid.
+ *
+ * Order of checks in POST:
+ *   1. Authenticate the MCP token  → identifies the user.
+ *   2. Look up the user's UpGPT capabilities (via JWT / session / token
+ *      fallbacks inside `requireCapability`) and verify `mcp` is present.
+ *   3. Dispatch to the requested tool.
+ *
+ * If the `mcp` capability is missing we return JSON-RPC error -32001 with a
+ * link to upgrade — phrased as an MCP-level error so AI clients can surface
+ * it cleanly to the end user.
  *
  * Full MCP client setup:
  *   claude_desktop_config.json:
@@ -29,6 +48,8 @@ import { authenticateMcpToken, hasScope, TOOL_SCOPES } from '@/lib/mcp/auth';
 import { MCP_TOOLS } from '@/lib/mcp/tools';
 import { getMailProvider } from '@/lib/mail/providers';
 import { createServiceSupabaseClient } from '@/lib/supabase-server';
+import { requireCapability } from '@/lib/billing/upinbox-entitlement';
+import { CAPABILITY } from '@/lib/billing/capabilities';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -61,7 +82,9 @@ function rpcResult(id: string | number | null, result: unknown): JsonRpcResponse
 }
 
 export async function POST(request: NextRequest) {
-  // Authenticate
+  // ─── 1. Authenticate the MCP client token ──────────────────────────────────
+  // This proves the caller holds a valid token for some user. It does NOT
+  // prove the user is currently entitled to use the MCP server.
   const authHeader = request.headers.get('authorization');
   const tokenRecord = await authenticateMcpToken(authHeader);
 
@@ -69,6 +92,24 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       rpcError(null, -32001, 'Unauthorized: invalid or expired MCP token'),
       { status: 401 }
+    );
+  }
+
+  // ─── 2. Gate on the `mcp` UpGPT capability ─────────────────────────────────
+  // The token identifies who is calling, but only an active UpGPT subscription
+  // with the `mcp` capability is allowed to use the MCP server. This catches
+  // the case where a user holds a still-valid token but downgraded their plan.
+  const entitlement = await requireCapability(request, CAPABILITY.MCP);
+  if (!entitlement.ok) {
+    return NextResponse.json(
+      rpcError(
+        null,
+        -32001,
+        'MCP server requires UpGPT subscription with mcp capability. ' +
+          'Subscribe at https://upgpt.ai/account/subscribe',
+        entitlement.upgrade
+      ),
+      { status: entitlement.status ?? 402 }
     );
   }
 

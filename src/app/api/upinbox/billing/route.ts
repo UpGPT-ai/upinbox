@@ -1,69 +1,78 @@
 /**
  * Billing API routes for hosted UpInbox.
  *
- * GET  /api/upinbox/billing              — current subscription info
- * POST /api/upinbox/billing/checkout     — create Stripe checkout session
- * POST /api/upinbox/billing/portal       — create Stripe customer portal session
- * POST /api/upinbox/billing/webhook      — Stripe webhook handler
+ * GET  /api/upinbox/billing              — current UpGPT capability-based billing info
+ * POST /api/upinbox/billing/checkout     — redirect to UpGPT checkout
+ * POST /api/upinbox/billing/portal       — redirect to UpGPT billing portal
+ * POST /api/upinbox/billing/webhook      — Stripe webhook handler (legacy bridge)
  *
  * Self-hosted license issuance is at /api/upinbox/license
+ *
+ * NOTE: UpInbox does NOT have its own tiers. All entitlement lives on UpGPT.ai
+ * as a capability set. This route surfaces those capabilities so the UI can
+ * render the correct state without reasoning about plan strings locally.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerSupabaseClient, getCurrentUser, createServiceSupabaseClient } from '@/lib/supabase-server';
-import { STRIPE_PRICE_IDS, PRICING } from '@/lib/billing/tiers';
-import { z } from 'zod';
+import { createServerSupabaseClient, createServiceSupabaseClient } from '@/lib/supabase-server';
+import { getAuthContext } from '@/lib/billing/upinbox-entitlement';
+import { CAPABILITY, getMaxAccounts } from '@/lib/billing/capabilities';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-function getStripe() {
-  const key = process.env.STRIPE_SECRET_KEY;
-  if (!key) throw new Error('STRIPE_SECRET_KEY not configured');
-  // Dynamic import to avoid loading Stripe on self-hosted instances without billing
-  // In production, use: import Stripe from 'stripe'; const stripe = new Stripe(key)
-  return { key }; // Placeholder — real integration uses the stripe npm package
-}
+const UPGPT_SUBSCRIBE_URL = 'https://upgpt.ai/account/subscribe';
+const UPGPT_MANAGE_URL = 'https://upgpt.ai/account/billing';
 
-// ─── GET: subscription status ─────────────────────────────────────────────────
+// ─── GET: UpGPT capability-based billing info ─────────────────────────────────
 
-export async function GET() {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+export async function GET(request: NextRequest) {
+  const ctx = await getAuthContext(request);
 
-  const supabase = await createServerSupabaseClient();
-  const { data } = await (supabase as any)
-    .schema('upinbox').from('subscriptions')
-    .select('tier, status, current_period_end, cancel_at_period_end, stripe_customer_id')
-    .eq('user_id', user.id)
-    .single();
-
-  if (!data) {
-    // No subscription = free tier
+  if (!ctx) {
     return NextResponse.json({
-      tier: 'free',
-      status: 'active',
-      current_period_end: null,
-      cancel_at_period_end: false,
+      authenticated: false,
+      capabilities: [],
+      plan: null,
+      subscribeUrl: UPGPT_SUBSCRIBE_URL,
+      manageUrl: UPGPT_MANAGE_URL,
+      hasEmail: false,
+      hasMcp: false,
+      hasByok: false,
+      accountsConnected: 0,
+      accountsLimit: 0,
     });
   }
 
+  const capabilities = ctx.license?.capabilities ?? [];
+  const plan = ctx.license?.plan ?? null;
+
+  // Count connected email accounts for this user.
+  const supabase = await createServerSupabaseClient();
+  const { count } = await (supabase as any)
+    .schema('upinbox')
+    .from('accounts')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', ctx.userId);
+
+  const accountsConnected = typeof count === 'number' ? count : 0;
+  const accountsLimit = getMaxAccounts(capabilities);
+
   return NextResponse.json({
-    tier: data.tier,
-    status: data.status,
-    current_period_end: data.current_period_end,
-    cancel_at_period_end: data.cancel_at_period_end,
-    has_stripe: !!data.stripe_customer_id,
+    authenticated: true,
+    capabilities,
+    plan,
+    subscribeUrl: UPGPT_SUBSCRIBE_URL,
+    manageUrl: UPGPT_MANAGE_URL,
+    hasEmail: capabilities.includes(CAPABILITY.EMAIL),
+    hasMcp: capabilities.includes(CAPABILITY.MCP),
+    hasByok: capabilities.includes(CAPABILITY.BYOK),
+    accountsConnected,
+    accountsLimit,
   });
 }
 
 // ─── POST: dispatch by action ──────────────────────────────────────────────────
-
-const CheckoutSchema = z.object({
-  plan: z.enum(['plus_monthly', 'plus_annual', 'business_monthly', 'business_annual']),
-  success_url: z.string().url().optional(),
-  cancel_url: z.string().url().optional(),
-});
 
 export async function POST(request: NextRequest) {
   const action = request.nextUrl.searchParams.get('action');
@@ -75,57 +84,45 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
 }
 
+/**
+ * Checkout is handled on UpGPT.ai. We never run a local checkout flow because
+ * UpInbox does not sell anything directly — capabilities are purchased from
+ * the UpGPT account page.
+ */
 async function handleCheckout(request: NextRequest) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-
-  let body: unknown;
-  try { body = await request.json(); }
-  catch { return NextResponse.json({ error: 'Invalid JSON' }, { status: 400 }); }
-
-  const parsed = CheckoutSchema.safeParse(body);
-  if (!parsed.success) {
-    return NextResponse.json({ error: 'Validation failed', details: parsed.error.flatten() }, { status: 422 });
+  const ctx = await getAuthContext(request);
+  if (!ctx) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { plan, success_url, cancel_url } = parsed.data;
-  const priceId = STRIPE_PRICE_IDS[plan];
-
-  if (!priceId) {
-    return NextResponse.json({ error: `Price ID not configured for plan: ${plan}` }, { status: 500 });
-  }
-
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3001';
-
-  // In a real implementation, use the Stripe SDK:
-  // const session = await stripe.checkout.sessions.create({...})
-  // return NextResponse.json({ url: session.url })
-
-  // Placeholder response for open source build:
   return NextResponse.json({
-    checkout_url: `https://billing.upinbox.ai/checkout?plan=${plan}&user=${user.id}`,
-    plan,
-    price_id: priceId,
-    success_url: success_url ?? `${appUrl}/inbox?upgrade=success`,
-    cancel_url: cancel_url ?? `${appUrl}/settings/billing`,
-    note: 'Stripe integration requires STRIPE_SECRET_KEY in .env',
+    redirectUrl: UPGPT_SUBSCRIBE_URL,
+    message: 'UpInbox capabilities are purchased on UpGPT.ai.',
   });
 }
 
+/**
+ * Billing management lives on UpGPT.ai. We forward the user there rather than
+ * running a local Stripe customer portal session, because the customer record
+ * is owned by UpGPT, not UpInbox.
+ */
 async function handlePortal(request: NextRequest) {
-  const user = await getCurrentUser();
-  if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const ctx = await getAuthContext(request);
+  if (!ctx) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
 
-  const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? 'http://localhost:3001';
-
-  // Placeholder — real: stripe.billingPortal.sessions.create({customer: stripeCustomerId})
   return NextResponse.json({
-    portal_url: `https://billing.upinbox.ai/portal?user=${user.id}`,
-    return_url: `${appUrl}/settings/billing`,
-    note: 'Stripe integration requires STRIPE_SECRET_KEY in .env',
+    redirectUrl: UPGPT_MANAGE_URL,
+    message: 'Manage your UpGPT subscription on UpGPT.ai.',
   });
 }
 
+/**
+ * Legacy webhook bridge — kept so existing Stripe events do not 404 during the
+ * UpGPT migration. New capability changes should be delivered by the UpGPT.ai
+ * entitlement webhook at /api/webhooks/upgpt, not here.
+ */
 async function handleWebhook(request: NextRequest) {
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
   if (!webhookSecret) {
@@ -139,11 +136,6 @@ async function handleWebhook(request: NextRequest) {
 
   const body = await request.text();
 
-  // In production:
-  // const event = stripe.webhooks.constructEvent(body, signature, webhookSecret)
-  // switch (event.type) { case 'checkout.session.completed': ... }
-
-  // For self-hosted / open source: parse and handle manually
   let event: Record<string, unknown>;
   try {
     event = JSON.parse(body);
@@ -154,35 +146,27 @@ async function handleWebhook(request: NextRequest) {
   const eventType = event.type as string;
   const supabase = createServiceSupabaseClient();
 
-  if (eventType === 'checkout.session.completed') {
-    const session = event.data as Record<string, unknown>;
-    const metadata = session.metadata as Record<string, string> | undefined;
-    const userId = metadata?.user_id;
-    const plan = metadata?.plan;
-
-    if (userId && plan) {
-      const tier = plan.startsWith('business') ? 'business' : 'plus';
-      await (supabase as any).schema('upinbox').from('subscriptions').upsert({
-        user_id: userId,
-        tier,
-        status: 'active',
-        stripe_customer_id: session.customer as string,
-        stripe_subscription_id: session.subscription as string,
-        current_period_end: null,
-        cancel_at_period_end: false,
-        updated_at: new Date().toISOString(),
-      }, { onConflict: 'user_id' });
-    }
-  }
-
-  if (eventType === 'customer.subscription.deleted') {
-    const sub = (event.data as Record<string, unknown>);
-    const customerId = sub.customer as string;
+  // Best-effort acknowledgement so Stripe stops retrying. Capability state is
+  // authoritative on UpGPT.ai, so we do not mutate any local entitlement here.
+  if (
+    eventType === 'checkout.session.completed' ||
+    eventType === 'customer.subscription.updated' ||
+    eventType === 'customer.subscription.deleted'
+  ) {
+    const session = (event.data as Record<string, unknown>) ?? {};
+    const customerId = session.customer as string | undefined;
 
     if (customerId) {
-      await (supabase as any).schema('upinbox').from('subscriptions')
-        .update({ tier: 'free', status: 'canceled' })
-        .eq('stripe_customer_id', customerId);
+      await (supabase as any)
+        .schema('upinbox')
+        .from('billing_events')
+        .insert({
+          event_type: eventType,
+          stripe_customer_id: customerId,
+          payload: event,
+          received_at: new Date().toISOString(),
+        })
+        .then(() => undefined, () => undefined);
     }
   }
 

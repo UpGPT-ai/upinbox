@@ -1,68 +1,54 @@
 'use client';
 
 import { useQuery } from '@tanstack/react-query';
-import { PRICING } from '@/lib/billing/tiers';
 
-interface Subscription {
-  tier: string;
-  status: string;
-  current_period_end: string | null;
-  cancel_at_period_end: boolean;
+interface BillingResponse {
+  hasEmail: boolean;
+  plan?: string;
+  planName?: string;
+  capabilities?: string[];
+  accountsUsed?: number;
+  accountsLimit?: number;
+  subscribeUrl: string;
+  manageUrl: string;
 }
 
-function useSubscription() {
+const CAPABILITY_LABELS: Record<string, string> = {
+  email: 'Email',
+  byok: 'BYOK AI',
+  mcp: 'MCP',
+  mobile: 'Mobile',
+  uplink: 'UpLink',
+  upgpt: 'UpGPT',
+  drafts: 'AI Drafts',
+  labels: 'Smart Labels',
+  teams: 'Teams',
+  api: 'Intelligence API',
+};
+
+const FEATURE_LIST = [
+  { icon: '✉', label: 'UpInbox email — ZK-encrypted, BYOK AI triage' },
+  { icon: '🔑', label: 'BYOK — bring Claude, GPT, Gemini keys' },
+  { icon: '🔌', label: 'MCP server access — connect your tools' },
+  { icon: '📱', label: 'Mobile apps — iOS and Android' },
+  { icon: '🔗', label: 'UpLink features — agent orchestration' },
+  { icon: '🤖', label: 'UpGPT workflows — multi-agent automation' },
+];
+
+function useBilling() {
   return useQuery({
-    queryKey: ['upinbox', 'subscription'],
-    queryFn: async (): Promise<Subscription> => {
+    queryKey: ['upinbox', 'billing'],
+    queryFn: async (): Promise<BillingResponse> => {
       const res = await fetch('/api/upinbox/billing');
-      if (!res.ok) throw new Error('Failed to fetch subscription');
+      if (!res.ok) throw new Error('Failed to fetch billing');
       return res.json();
     },
     staleTime: 5 * 60 * 1000,
   });
 }
 
-const TIER_INFO: Record<string, { label: string; description: string; color: string }> = {
-  free: {
-    label: 'Free',
-    description: 'Heuristic classification (70%), 1 account, BYOK AI',
-    color: 'text-muted-foreground',
-  },
-  plus: {
-    label: 'Plus',
-    description: 'BYOK AI (95%), 3 accounts, smart labels, AI drafts, Reply Later',
-    color: 'text-blue-600',
-  },
-  business: {
-    label: 'Business',
-    description: 'Intelligence API (95%, no API key needed), unlimited accounts, teams',
-    color: 'text-purple-600',
-  },
-  community: {
-    label: 'Self-Host Community',
-    description: 'Free forever, ≤10 users, heuristic + BYOK',
-    color: 'text-green-600',
-  },
-};
-
 export function BillingPanel() {
-  const { data: subscription, isLoading } = useSubscription();
-
-  const handleUpgrade = async (plan: string) => {
-    const res = await fetch('/api/upinbox/billing?action=checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ plan }),
-    });
-    const data = await res.json();
-    if (data.checkout_url) window.location.href = data.checkout_url;
-  };
-
-  const handlePortal = async () => {
-    const res = await fetch('/api/upinbox/billing?action=portal', { method: 'POST' });
-    const data = await res.json();
-    if (data.portal_url) window.location.href = data.portal_url;
-  };
+  const { data: billing, isLoading } = useBilling();
 
   if (isLoading) {
     return (
@@ -73,124 +59,143 @@ export function BillingPanel() {
     );
   }
 
-  const tier = subscription?.tier ?? 'free';
-  const tierInfo = TIER_INFO[tier] ?? TIER_INFO.free;
+  if (!billing) {
+    return (
+      <div className="space-y-4">
+        <h2 className="text-lg font-semibold">Billing</h2>
+        <p className="text-sm text-muted-foreground">Unable to load billing information.</p>
+      </div>
+    );
+  }
+
+  const subscribeUrl = billing.subscribeUrl || 'https://upgpt.ai/pricing';
+  const manageUrl = billing.manageUrl || 'https://upgpt.ai/account/billing';
+
+  // No email capability → show upgrade card
+  if (!billing.hasEmail) {
+    return (
+      <div className="space-y-6">
+        <h2 className="text-lg font-semibold">Billing</h2>
+
+        <div className="border-2 border-primary/30 rounded-lg p-6 space-y-4 bg-primary/5">
+          <div className="space-y-2">
+            <h3 className="text-xl font-bold">Unlock UpInbox email</h3>
+            <p className="text-sm text-muted-foreground">
+              Billing is managed at UpGPT.ai — your one subscription unlocks UpInbox,
+              UpLink features, and more.
+            </p>
+          </div>
+
+          <ul className="space-y-2">
+            {FEATURE_LIST.map((feature) => (
+              <li key={feature.label} className="flex items-start gap-2 text-sm">
+                <span className="text-primary font-medium">{feature.icon}</span>
+                <span>{feature.label}</span>
+              </li>
+            ))}
+          </ul>
+
+          <div className="flex flex-col sm:flex-row gap-3 pt-2">
+            <button
+              onClick={() => window.open(subscribeUrl, '_blank')}
+              className="px-5 py-2.5 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors"
+            >
+              Subscribe at UpGPT.ai →
+            </button>
+          </div>
+        </div>
+
+        <div className="border border-dashed rounded-lg p-4 space-y-1">
+          <p className="text-sm font-medium">Self-hosting?</p>
+          <p className="text-xs text-muted-foreground">
+            UpInbox is free under MIT license when you host it yourself.
+          </p>
+          <a
+            href="/docs/SELF-HOSTING.md"
+            className="text-xs text-primary hover:underline inline-block"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Self-hosting docs →
+          </a>
+        </div>
+      </div>
+    );
+  }
+
+  // Has email capability → show active state
+  const capabilities = billing.capabilities ?? [];
+  const planName = billing.planName ?? billing.plan ?? 'UpGPT Subscription';
 
   return (
     <div className="space-y-6">
       <h2 className="text-lg font-semibold">Billing</h2>
 
-      {/* Current plan */}
-      <div className="border rounded-lg p-4 space-y-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <span className={`font-semibold text-sm ${tierInfo.color}`}>{tierInfo.label}</span>
-            {subscription?.status === 'active' && tier !== 'free' && (
-              <span className="ml-2 text-xs bg-green-100 text-green-800 px-1.5 py-0.5 rounded">Active</span>
+      <div className="border rounded-lg p-5 space-y-4">
+        <div className="flex items-start justify-between gap-4">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2">
+              <span className="font-semibold">{planName}</span>
+              <span className="text-xs bg-green-100 text-green-800 px-1.5 py-0.5 rounded">
+                Active
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">UpGPT subscription</p>
+          </div>
+          <button
+            onClick={() => window.open(manageUrl, '_blank')}
+            className="px-3 py-1.5 border rounded-md text-sm hover:bg-muted transition-colors whitespace-nowrap"
+          >
+            Manage at UpGPT.ai →
+          </button>
+        </div>
+
+        {capabilities.length > 0 && (
+          <div className="space-y-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+              Active capabilities
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {capabilities.map((cap) => (
+                <span
+                  key={cap}
+                  className="inline-flex items-center gap-1 px-2 py-1 bg-green-50 text-green-800 text-xs rounded-md border border-green-200"
+                >
+                  <span>{CAPABILITY_LABELS[cap] ?? cap}</span>
+                  <span>✓</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {typeof billing.accountsUsed === 'number' && typeof billing.accountsLimit === 'number' && (
+          <div className="space-y-1.5">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">Email accounts</span>
+              <span className="font-medium">
+                {billing.accountsUsed} / {billing.accountsLimit === -1 ? '∞' : billing.accountsLimit}
+              </span>
+            </div>
+            {billing.accountsLimit > 0 && (
+              <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                <div
+                  className="h-full bg-primary transition-all"
+                  style={{
+                    width: `${Math.min(100, (billing.accountsUsed / billing.accountsLimit) * 100)}%`,
+                  }}
+                />
+              </div>
             )}
           </div>
-          {tier !== 'free' && tier !== 'community' && (
-            <button
-              onClick={handlePortal}
-              className="text-sm text-primary hover:underline"
-            >
-              Manage subscription →
-            </button>
-          )}
-        </div>
-        <p className="text-sm text-muted-foreground">{tierInfo.description}</p>
-        {subscription?.current_period_end && (
-          <p className="text-xs text-muted-foreground">
-            {subscription.cancel_at_period_end ? 'Cancels' : 'Renews'} on{' '}
-            {new Date(subscription.current_period_end).toLocaleDateString([], { month: 'long', day: 'numeric', year: 'numeric' })}
-          </p>
         )}
       </div>
 
-      {/* Upgrade options — only for free users */}
-      {tier === 'free' && (
-        <div className="space-y-3">
-          <h3 className="font-medium text-sm">Upgrade your plan</h3>
-
-          {/* Plus */}
-          <div className="border rounded-lg p-4 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="font-semibold">Plus</span>
-                <span className="ml-2 text-sm text-muted-foreground">${PRICING.plus.monthly}/mo · ${PRICING.plus.annual}/yr</span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleUpgrade('plus_monthly')}
-                  className="px-3 py-1.5 border rounded-md text-sm hover:bg-muted transition-colors"
-                >
-                  Monthly
-                </button>
-                <button
-                  onClick={() => handleUpgrade('plus_annual')}
-                  className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90 transition-colors"
-                >
-                  Annual (save 22%)
-                </button>
-              </div>
-            </div>
-            <ul className="text-sm text-muted-foreground space-y-0.5">
-              <li>✓ BYOK AI triage (Claude, GPT, Gemini)</li>
-              <li>✓ Up to 3 email accounts</li>
-              <li>✓ Smart labels + auto-archive</li>
-              <li>✓ AI draft writer + Reply Later</li>
-            </ul>
-          </div>
-
-          {/* Business */}
-          <div className="border rounded-lg p-4 space-y-3 border-primary/30">
-            <div className="flex items-center justify-between">
-              <div>
-                <span className="font-semibold">Business</span>
-                <span className="ml-2 text-xs bg-purple-100 text-purple-800 px-1.5 py-0.5 rounded">Per seat</span>
-                <span className="ml-2 text-sm text-muted-foreground">${PRICING.business.monthly}/seat/mo</span>
-              </div>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => handleUpgrade('business_monthly')}
-                  className="px-3 py-1.5 border rounded-md text-sm hover:bg-muted transition-colors"
-                >
-                  Monthly
-                </button>
-                <button
-                  onClick={() => handleUpgrade('business_annual')}
-                  className="px-3 py-1.5 bg-primary text-primary-foreground rounded-md text-sm hover:bg-primary/90 transition-colors"
-                >
-                  Annual (save 21%)
-                </button>
-              </div>
-            </div>
-            <ul className="text-sm text-muted-foreground space-y-0.5">
-              <li>✓ Intelligence API — 95% accuracy, no API key needed</li>
-              <li>✓ Unlimited email accounts</li>
-              <li>✓ All Plus features</li>
-              <li>✓ Team inbox + shared labels</li>
-            </ul>
-          </div>
-
-          {/* Self-host */}
-          <div className="border border-dashed rounded-lg p-4 space-y-2">
-            <p className="text-sm font-medium">Self-host for your org?</p>
-            <p className="text-xs text-muted-foreground">
-              Docker Compose. Your server. Your data. UpInbox never stores your email.
-              Community tier is free forever. Business license: ${PRICING.selfhost_business.annual}/year.
-            </p>
-            <a
-              href="/docs/SELF-HOSTING.md"
-              className="text-xs text-primary hover:underline"
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              Self-hosting guide →
-            </a>
-          </div>
-        </div>
-      )}
+      <div className="border border-dashed rounded-lg p-4">
+        <p className="text-xs text-muted-foreground">
+          All UpGPT billing is at UpGPT.ai — UpInbox is just one of your capabilities.
+        </p>
+      </div>
     </div>
   );
 }

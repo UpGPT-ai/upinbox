@@ -3,6 +3,10 @@
 /**
  * ConnectAccountWizard — multi-step wizard for connecting a mail account.
  *
+ * Capability gate: fetches /api/upinbox/billing on mount. If the user's UpGPT
+ * subscription does NOT include the 'email' capability, an upgrade card is
+ * shown instead of the wizard.
+ *
  * Step 1: Choose provider (Gmail OAuth, Outlook OAuth, JMAP, Manual IMAP)
  * Step 2: Enter credentials / complete OAuth
  * Step 3: Test connection
@@ -11,7 +15,7 @@
  * Auto-detection for known IMAP providers (gmail, outlook, yahoo, etc.)
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAtom } from 'jotai';
 import { showConnectWizardAtom } from '@/atoms/mail';
 import { useQueryClient } from '@tanstack/react-query';
@@ -50,6 +54,18 @@ const PROVIDER_OPTIONS: { id: ProviderType; label: string; description: string; 
   { id: 'jmap', label: 'JMAP', description: 'Fastmail native JMAP, Stalwart, or any JMAP server.', badge: 'Fast' },
 ];
 
+const UPGRADE_URL = 'https://upgpt.ai/account/subscribe?product=upinbox';
+const SELF_HOSTING_URL = 'https://github.com/upgpt/upinbox/blob/main/SELF-HOSTING.md';
+
+const INCLUDED_FEATURES = [
+  'Smart Screener with AI confidence scoring',
+  'BYOK AI drafts (your keys, your inference)',
+  'MCP server (use email from Claude)',
+  'Tracker stripper with per-email count',
+  'Snooze, Send Later, Follow-ups',
+  'Native UpLink mobile (free download)',
+];
+
 export function ConnectAccountWizard() {
   const [, setShowWizard] = useAtom(showConnectWizardAtom);
   const queryClient = useQueryClient();
@@ -67,6 +83,39 @@ export function ConnectAccountWizard() {
   const [isConnecting, setIsConnecting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [connectedAccount, setConnectedAccount] = useState<string | null>(null);
+
+  // Capability gating
+  const [capabilityLoading, setCapabilityLoading] = useState(true);
+  const [hasEmailCapability, setHasEmailCapability] = useState(false);
+  const [capabilityError, setCapabilityError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch('/api/upinbox/billing', { credentials: 'include' });
+        if (!res.ok) throw new Error(`Billing check failed (${res.status})`);
+        const data = await res.json();
+        const capabilities: string[] =
+          (Array.isArray(data?.capabilities) && data.capabilities) ||
+          (Array.isArray(data?.entitlements?.capabilities) && data.entitlements.capabilities) ||
+          [];
+        if (!cancelled) {
+          setHasEmailCapability(capabilities.includes('email'));
+          setCapabilityLoading(false);
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setCapabilityError(err instanceof Error ? err.message : 'Could not verify subscription');
+          setHasEmailCapability(false);
+          setCapabilityLoading(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Auto-detect IMAP settings from email domain
   const handleEmailChange = (e: string) => {
@@ -155,6 +204,96 @@ export function ConnectAccountWizard() {
   };
 
   const close = () => setShowWizard(false);
+
+  // --- Capability gate states ----------------------------------------------
+
+  if (capabilityLoading) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-background border rounded-xl shadow-lg w-full max-w-md">
+          <div className="flex items-center justify-between px-6 py-4 border-b">
+            <h2 className="font-semibold">Connect email account</h2>
+            <button onClick={close} className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground">
+              ✕
+            </button>
+          </div>
+          <div className="flex flex-col items-center py-12 gap-4">
+            <div className="w-10 h-10 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+            <p className="text-sm text-muted-foreground">Checking your UpGPT subscription…</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (!hasEmailCapability) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-background border rounded-xl shadow-lg w-full max-w-lg">
+          {/* Header */}
+          <div className="flex items-center justify-between px-6 py-4 border-b">
+            <h2 className="font-semibold">Connect email account</h2>
+            <button onClick={close} className="p-1 rounded hover:bg-muted transition-colors text-muted-foreground">
+              ✕
+            </button>
+          </div>
+
+          {/* Upgrade card */}
+          <div className="px-6 py-6 space-y-5">
+            <div className="text-center space-y-2">
+              <div className="text-4xl">📬</div>
+              <h3 className="text-xl font-semibold">Unlock UpInbox</h3>
+              <p className="text-sm text-muted-foreground">
+                UpInbox email is part of your UpGPT subscription. Add the email capability at UpGPT.ai to
+                connect your inbox.
+              </p>
+            </div>
+
+            <div className="border rounded-lg p-4 bg-accent/30 space-y-2">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">What's included</p>
+              <ul className="space-y-1.5">
+                {INCLUDED_FEATURES.map((feature) => (
+                  <li key={feature} className="flex items-start gap-2 text-sm">
+                    <span className="text-primary mt-0.5">✓</span>
+                    <span>{feature}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+
+            {capabilityError && (
+              <p className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                Note: {capabilityError}
+              </p>
+            )}
+
+            <a
+              href={UPGRADE_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="w-full block text-center py-2.5 bg-primary text-primary-foreground rounded-md text-sm font-medium hover:bg-primary/90 transition-colors"
+            >
+              Subscribe at UpGPT.ai
+            </a>
+
+            <p className="text-xs text-center text-muted-foreground">
+              Self-hosting UpInbox? It's free under MIT →{' '}
+              <a
+                href={SELF_HOSTING_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary hover:underline"
+              >
+                SELF-HOSTING.md on GitHub
+              </a>
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- Wizard (capability present) -----------------------------------------
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
