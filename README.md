@@ -1,13 +1,20 @@
 # UpInbox
 
+[![CI](https://img.shields.io/github/actions/workflow/status/UpGPT-ai/upinbox/ci.yml?branch=main&label=CI)](https://github.com/UpGPT-ai/upinbox/actions/workflows/ci.yml) [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE) [![Self-Host: Free](https://img.shields.io/badge/Self--Host-Free-brightgreen)](docs/SELF-HOSTING.md) [![Billing: UpGPT](https://img.shields.io/badge/Billing-UpGPT-purple)](https://upgpt.ai) [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen)](CONTRIBUTING.md)
+
 **Your email. Your AI. Your rules.**
 
 UpInbox is an open-source email intelligence layer that connects to Gmail, Outlook, Fastmail, or any IMAP server — and makes it smart. You choose the AI: bring your own Claude/GPT/Gemini key, run it 100% locally with [UpLink](https://uplink.upgpt.ai), or use our hosted intelligence API.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![npm: @upgpt-ai/email-classifier](https://img.shields.io/badge/npm-%40upgpt%2Femail--classifier-red)](https://www.npmjs.com/package/@upgpt-ai/email-classifier)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.5-blue)](https://www.typescriptlang.org/)
 [![Next.js](https://img.shields.io/badge/Next.js-15-black)](https://nextjs.org/)
+
+---
+
+## What is UpInbox
+
+UpInbox is an open-source, privacy-first email client and intelligence layer. It connects to your existing inbox (Gmail, Outlook, Fastmail, IMAP) and adds AI features — classification, smart feed, drafts, screener — without ever taking custody of your AI keys or email content. You can run it hosted, self-host it via Docker, or pair it with [UpLink](https://uplink.upgpt.ai) for 100% local AI.
 
 ---
 
@@ -38,16 +45,29 @@ UpInbox is an open-source email intelligence layer that connects to Gmail, Outlo
 
 ---
 
-## Quick Start (Hosted)
+## Quick Start
+
+**Hosted (60 seconds):**
 
 1. Go to [upinbox.ai](https://upinbox.ai)
 2. Connect your Gmail or Outlook — takes 60 seconds
 3. Add your AI key (Claude/GPT) — runs in your browser, we never see it
 4. Optional: install [UpLink](https://uplink.upgpt.ai) for 100% local AI
 
+**Local dev:**
+
+```bash
+git clone https://github.com/UpGPT-ai/upinbox.git
+cd upinbox
+npm install
+npm run dev
+```
+
 ---
 
-## Self-Host in 10 Minutes
+## Self-Hosting
+
+Self-host in 10 minutes. Free forever for communities up to 10 users.
 
 **One-liner** (auto-generates all secrets):
 ```bash
@@ -72,6 +92,8 @@ The Docker image includes:
 **What's in the image:** JMAP/IMAP adapters, USX encryption, BYOK AI routing, the [`@upgpt-ai/email-classifier`](https://github.com/UpGPT-ai/email-classifier) npm package (UAL-1.0, 70% heuristic accuracy).
 
 **What's not in the image:** UpInbox's trained intelligence classifier (~95% accuracy, no API key needed). That lives at `api.upinbox.ai` and requires a [Business or Enterprise license](https://upinbox.ai/licenses). Community tier (≤10 users) is free forever with heuristic classification and BYOK.
+
+Full guide: [docs/SELF-HOSTING.md](docs/SELF-HOSTING.md)
 
 ---
 
@@ -179,16 +201,6 @@ Zero dependencies. Works in Node.js, browsers, Chrome extensions, Cloudflare Wor
 
 ---
 
-## License
-
-UpInbox client code: **MIT License** — see [LICENSE](LICENSE)
-
-`@upgpt-ai/email-classifier` package: **[UAL-1.0](https://github.com/UpGPT-ai/email-classifier/blob/main/LICENSE)** — free with "Powered by UpGPT.ai" attribution. Commercial license (remove attribution): [hello@upgpt.ai](mailto:hello@upgpt.ai)
-
-UpInbox Intelligence API: Proprietary — [license tiers](https://upinbox.ai/licenses)
-
----
-
 ## Contributing
 
 PRs welcome on the client, adapters, encryption layer, and MCP server. See [CONTRIBUTING.md](CONTRIBUTING.md).
@@ -197,6 +209,16 @@ PRs welcome on the client, adapters, encryption layer, and MCP server. See [CONT
 - Add intelligence API calls without the JWT enforcement
 - Remove license checks from the self-host Docker build
 - Embed the platform classifier logic locally
+
+---
+
+## License
+
+UpInbox client code: **MIT License** — see [LICENSE](LICENSE)
+
+`@upgpt-ai/email-classifier` package: **[UAL-1.0](https://github.com/UpGPT-ai/email-classifier/blob/main/LICENSE)** — free with "Powered by UpGPT.ai" attribution. Commercial license (remove attribution): [hello@upgpt.ai](mailto:hello@upgpt.ai)
+
+UpInbox Intelligence API: Proprietary — [license tiers](https://upinbox.ai/licenses)
 
 ---
 
