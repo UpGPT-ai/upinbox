@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>You're offline — UpInbox</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+      background: #0f0f10;
+      color: #e5e5e5;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 24px;
+    }
+    .container {
+      max-width: 360px;
+      width: 100%;
+    }
+    .icon {
+      font-size: 64px;
+      line-height: 1;
+      margin-bottom: 24px;
+      display: block;
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      color: #ffffff;
+      margin-bottom: 12px;
+    }
+    p {
+      font-size: 15px;
+      line-height: 1.6;
+      color: #9ca3af;
+      margin-bottom: 32px;
+    }
+    button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: #6366f1;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      font-weight: 500;
+      padding: 12px 28px;
+      cursor: pointer;
+      transition: background 0.15s ease;
+    }
+    button:hover { background: #4f46e5; }
+    button:active { background: #4338ca; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <span class="icon">📬</span>
+    <h1>You're offline</h1>
+    <p>No internet connection detected. Check your network and try again — your inbox will be ready when you're back.</p>
+    <button onclick="location.reload()">
+      Try again
+    </button>
+  </div>
+</body>
+</html>

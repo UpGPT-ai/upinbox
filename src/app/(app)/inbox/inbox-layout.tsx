@@ -43,6 +43,7 @@ import { FeedTabs, activeFeedAtom } from '@/components/screener/feed-tabs';
 import { FeedEmailList } from '@/components/screener/feed-email-list';
 import { FocusList } from '@/components/screener/focus-list';
 import { ConnectAccountWizard } from '@/components/ai/connect-account-wizard';
+import { DeepCleanWizard } from '@/components/ai/deep-clean-wizard';
 import { ComposeWindow } from '@/components/mail/compose-window';
 import { CommandPalette } from '@/components/mail/command-palette';
 import { UndoToast } from '@/components/mail/undo-toast';
@@ -192,6 +193,7 @@ export function InboxLayout() {
   const [unified] = useAtom(unifiedInboxAtom);
   const [toolbarCollapsed, setToolbarCollapsed] = useAtom(toolbarCollapsedAtom);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showDeepClean, setShowDeepClean] = useState(false);
   const { data: accounts = [], isLoading } = useAccounts();
 
   const [commandPaletteOpen, setCommandPaletteOpen] = useAtom(commandPaletteOpenAtom);
@@ -293,6 +295,28 @@ export function InboxLayout() {
             )}
 
             <div className="flex-1" />
+
+            {/* Deep Clean button */}
+            {hasAccounts && (
+              <ToolbarButton
+                onClick={() => setShowDeepClean(true)}
+                title="Deep Clean — AI-powered inbox declutter"
+                active={showDeepClean}
+              >
+                <span className="text-sm leading-none">🧹</span>
+              </ToolbarButton>
+            )}
+
+            {/* MCP Setup link */}
+            {hasAccounts && (
+              <a
+                href="/inbox/mcp"
+                title="MCP Setup — connect AI tools and automations"
+                className="p-1.5 rounded transition-colors text-muted-foreground hover:bg-muted hover:text-foreground"
+              >
+                <span className="text-sm leading-none">🔌</span>
+              </a>
+            )}
 
             {/* Health score button */}
             <ToolbarButton
@@ -450,6 +474,14 @@ export function InboxLayout() {
 
       {/* Connect wizard modal */}
       {showConnectWizard && <ConnectAccountWizard />}
+
+      {/* Deep Clean wizard modal overlay */}
+      {showDeepClean && (
+        <DeepCleanWizard
+          accountId={activeAccountId ?? ''}
+          onClose={() => setShowDeepClean(false)}
+        />
+      )}
 
       {/* Compose window — fixed overlay, always rendered */}
       <ComposeWindow />

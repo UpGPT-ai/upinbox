@@ -3,20 +3,22 @@
 /**
  * Settings shell — tabbed settings pages.
  *
- * Tabs: General | AI & Privacy | Accounts | Screener Rules | Billing | MCP Tokens | Signatures | AI & Draft
+ * Tabs: General | AI & Privacy | Accounts | Screener Rules | Notifications | Auto-Archive | Billing | MCP Tokens | Signatures | AI & Draft
  */
 
 import { useState } from 'react';
 import { useAtom } from 'jotai';
-import { undoDurationMsAtom } from '@/atoms/mail';
+import { undoDurationMsAtom, activeAccountIdAtom } from '@/atoms/mail';
 import { AiSetupPanel } from '@/components/ai/ai-setup-panel';
 import { ByokPanel } from '@/components/ai/byok-panel';
 import { DraftProfilePanel } from '@/components/ai/draft-profile-panel';
 import { SignatureManager } from '@/components/mail/signature-manager';
+import { AutoArchiveRules } from '@/components/mail/auto-archive-rules';
+import { NotificationRules } from '@/components/settings/notification-rules';
 import { BillingPanel } from './billing-panel';
 import { McpTokensPanel } from './mcp-tokens-panel';
 
-type Tab = 'general' | 'ai' | 'accounts' | 'screener' | 'billing' | 'mcp' | 'signatures' | 'ai-draft';
+type Tab = 'general' | 'ai' | 'accounts' | 'screener' | 'notifications' | 'auto-archive' | 'billing' | 'mcp' | 'signatures' | 'ai-draft';
 
 const UNDO_OPTIONS: { label: string; value: number }[] = [
   { label: '5s',  value: 5000 },
@@ -76,6 +78,8 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'ai', label: 'AI & Privacy', icon: '🤖' },
   { id: 'accounts', label: 'Accounts', icon: '📧' },
   { id: 'screener', label: 'Screener Rules', icon: '🔀' },
+  { id: 'notifications', label: 'Notifications', icon: '🔔' },
+  { id: 'auto-archive', label: 'Auto-Archive', icon: '📦' },
   { id: 'billing', label: 'Billing', icon: '💳' },
   { id: 'mcp', label: 'MCP Tokens', icon: '🔌' },
   { id: 'signatures', label: 'Signatures', icon: '✍️' },
@@ -84,6 +88,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 
 export function SettingsShell() {
   const [activeTab, setActiveTab] = useState<Tab>('general');
+  const [activeAccountId] = useAtom(activeAccountIdAtom);
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -145,6 +150,32 @@ export function SettingsShell() {
               Screener rule editor — coming in next release.
               Rules are active and seeded with defaults.
             </div>
+          </div>
+        )}
+        {activeTab === 'notifications' && (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold">Notifications</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Control when and how UpInbox notifies you about incoming mail.
+                Rules are evaluated in order — the first match wins.
+              </p>
+            </div>
+            <NotificationRules />
+          </div>
+        )}
+        {activeTab === 'auto-archive' && (
+          <div className="space-y-4">
+            <div>
+              <h2 className="text-lg font-semibold">Auto-Archive</h2>
+              <p className="text-sm text-muted-foreground mt-1">
+                Automatically archive mail that matches these rules.
+                Archived mail is still searchable and can be restored at any time.
+              </p>
+            </div>
+            {activeAccountId ? <AutoArchiveRules accountId={activeAccountId} /> : (
+              <p className="text-sm text-muted-foreground">Select an account to manage auto-archive rules.</p>
+            )}
           </div>
         )}
         {activeTab === 'billing' && <BillingPanel />}
