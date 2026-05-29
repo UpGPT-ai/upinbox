@@ -429,6 +429,8 @@ interface ThreadRowProps {
   isExpanded: boolean;
   openEmailId: string | null;
   archiveMailboxId: string | null;
+  isSelected: boolean;
+  onSelect: (e: React.MouseEvent) => void;
   onToggle: () => void;
   onOpenEmail: (emailId: string) => void;
 }
@@ -438,6 +440,8 @@ function ThreadRow({
   isExpanded,
   openEmailId,
   archiveMailboxId,
+  isSelected,
+  onSelect,
   onToggle,
   onOpenEmail,
 }: ThreadRowProps) {
@@ -492,38 +496,64 @@ function ThreadRow({
         className={`
           relative flex items-start gap-3 px-4 py-3 cursor-pointer border-b
           transition-colors select-none
-          ${anyOpen ? 'bg-accent' : 'hover:bg-muted/50'}
+          ${anyOpen ? 'bg-accent' : isSelected ? 'bg-accent/50' : 'hover:bg-muted/50'}
           ${thread.hasUnread ? 'font-medium' : ''}
         `}
       >
+        {/* Selection checkbox */}
+        <div
+          onClick={(e) => { e.stopPropagation(); onSelect(e); }}
+          className="mt-1 w-4 h-4 flex-shrink-0 flex items-center justify-center"
+        >
+          <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
+            isSelected ? 'bg-primary border-primary' : 'border-muted-foreground/60 hover:border-primary'
+          }`}>
+            {isSelected && (
+              <svg className="w-2.5 h-2.5 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+              </svg>
+            )}
+          </div>
+        </div>
+
         {/* Unread indicator dot */}
         <div className="mt-2 flex-shrink-0">
           <div className={`w-2 h-2 rounded-full ${thread.hasUnread ? 'bg-primary' : 'bg-transparent'}`} />
         </div>
 
-        {/* Participant initial circles (up to 3, overlapping) */}
-        <div className="flex-shrink-0 flex items-center mt-0.5" style={{ width: displayParticipants.length > 1 ? `${20 + (displayParticipants.length - 1) * 14}px` : '20px' }}>
-          {displayParticipants.map((p, idx) => {
-            const label = p.name || p.email;
-            const hue = avatarHue(p.email);
-            return (
-              <div
-                key={p.email}
-                title={label}
-                className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ring-2 ring-background flex-shrink-0"
-                style={{
-                  backgroundColor: `hsl(${hue}, 55%, 65%)`,
-                  color: `hsl(${hue}, 55%, 20%)`,
-                  marginLeft: idx === 0 ? 0 : '-6px',
-                  zIndex: displayParticipants.length - idx,
-                  position: 'relative',
-                }}
-              >
-                {getInitials(label)}
-              </div>
-            );
-          })}
-        </div>
+        {/* Participant avatar circles (up to 3, overlapping) — fallback to subject initial */}
+        {(() => {
+          const avatarList = displayParticipants.length > 0
+            ? displayParticipants
+            : [{ email: thread.subject || '?', name: thread.subject || '?' }];
+          return (
+            <div
+              className="flex-shrink-0 flex items-center mt-0.5"
+              style={{ width: avatarList.length > 1 ? `${20 + (avatarList.length - 1) * 14}px` : '20px' }}
+            >
+              {avatarList.map((p, idx) => {
+                const label = p.name || p.email || '?';
+                const hue = avatarHue(p.email || label);
+                return (
+                  <div
+                    key={`${p.email}-${idx}`}
+                    title={label}
+                    className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ring-2 ring-background flex-shrink-0"
+                    style={{
+                      backgroundColor: `hsl(${hue}, 55%, 65%)`,
+                      color: `hsl(${hue}, 55%, 20%)`,
+                      marginLeft: idx === 0 ? 0 : '-6px',
+                      zIndex: avatarList.length - idx,
+                      position: 'relative',
+                    }}
+                  >
+                    {getInitials(label)}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         {/* Thread info */}
         <div className="flex-1 min-w-0">
@@ -684,7 +714,7 @@ function EmailRow({ email, isOpen, isSelected, threadCount, archiveMailboxId, on
       <div onClick={(e) => { e.stopPropagation(); onSelect(e); }}
         className="mt-1 w-4 h-4 flex-shrink-0 flex items-center justify-center">
         <div className={`w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${
-          isSelected ? 'bg-primary border-primary' : 'border-muted-foreground/40 hover:border-primary'
+          isSelected ? 'bg-primary border-primary' : 'border-muted-foreground/60 hover:border-primary'
         }`}>
           {isSelected && (
             <svg className="w-2.5 h-2.5 text-primary-foreground" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -905,6 +935,17 @@ export function EmailList({ mailboxId }: EmailListProps) {
                 isExpanded={expandedThreads.has(thread.threadId)}
                 openEmailId={openEmailId}
                 archiveMailboxId={archiveMailboxId}
+                isSelected={thread.messages.some((m) => selectedIds.has(m.id))}
+                onSelect={(e) => {
+                  e.stopPropagation();
+                  const ids = thread.messages.map((m) => m.id);
+                  setSelectedIds((prev) => {
+                    const next = new Set(prev);
+                    const anySelected = ids.some((id) => next.has(id));
+                    ids.forEach((id) => anySelected ? next.delete(id) : next.add(id));
+                    return next;
+                  });
+                }}
                 onToggle={() => toggleThread(thread.threadId)}
                 onOpenEmail={(emailId) => setOpenEmailId(emailId)}
               />
