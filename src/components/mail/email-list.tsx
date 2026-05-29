@@ -2,7 +2,7 @@
 
 /**
  * EmailList — virtualized list with search bar, sort toggle, advanced filters,
- * and bulk action bar.
+ * bulk action bar, and conversation threading.
  */
 
 import { useState, useMemo } from 'react';
@@ -18,7 +18,10 @@ import {
   activeAccountIdAtom,
   snoozeEmailIdAtom,
   undoToastAtom,
+  threadingEnabledAtom,
+  expandedThreadsAtom,
 } from '@/atoms/mail';
+import { groupIntoThreads, ThreadedEmail } from '@/lib/mail/thread-utils';
 import { useEmails, useEmailMutations } from '@/hooks/use-emails';
 import { useMailboxes } from '@/hooks/use-mailboxes';
 import type { JmapEmail } from '@/lib/mail/types';
@@ -43,6 +46,24 @@ function formatSender(email: JmapEmail): string {
 /** Strip Re: / Fwd: prefixes from a subject to get the canonical thread key */
 function normalizeSubject(subject: string | undefined): string {
   return (subject ?? '').replace(/^(Re|Fwd|Fw):\s*/gi, '').trim().toLowerCase();
+}
+
+/** Get up to one or two initials from a name or email */
+function getInitials(nameOrEmail: string): string {
+  const name = nameOrEmail.trim();
+  if (!name) return '?';
+  const parts = name.split(/\s+/);
+  if (parts.length >= 2) return (parts[0][0] + parts[1][0]).toUpperCase();
+  return name[0].toUpperCase();
+}
+
+/** Deterministic pastel hue from a string */
+function avatarHue(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash * 31 + str.charCodeAt(i)) & 0xffffffff;
+  }
+  return Math.abs(hash) % 360;
 }
 
 // ─── Search Bar ───────────────────────────────────────────────────────────────
@@ -199,6 +220,7 @@ function ListHeader({
   const queryClient = useQueryClient();
   const [emptying, setEmptying] = useState(false);
   const [bulkArchiving, setBulkArchiving] = useState(false);
+  const [threadingEnabled, setThreadingEnabled] = useAtom(threadingEnabledAtom);
   const ids = [...selectedIds];
   const count = ids.length;
   const total = allEmails.length;
@@ -346,6 +368,19 @@ function ListHeader({
             {total === 0 ? 'No emails' : `${total} email${total === 1 ? '' : 's'}`}
           </span>
           <div className="flex-1" />
+          {/* Thread toggle button */}
+          <button
+            onClick={() => setThreadingEnabled((v) => !v)}
+            className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-colors ${
+              threadingEnabled
+                ? 'bg-primary/10 text-primary'
+                : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+            }`}
+            title={threadingEnabled ? 'Threading on — click to show individual emails' : 'Threading off — click to group by conversation'}
+          >
+            <span>💬</span>
+            <span className="hidden sm:inline">{threadingEnabled ? 'Threaded' : 'Thread'}</span>
+          </button>
           <button
             onClick={handleEmptyFolder}
             disabled={isPending}
@@ -384,6 +419,203 @@ function ActionBtn({ label, icon, pending, disabled, onClick, danger }: {
       }
       <span className="hidden sm:inline">{label}</span>
     </button>
+  );
+}
+
+// ─── Thread Row ───────────────────────────────────────────────────────────────
+
+interface ThreadRowProps {
+  thread: ThreadedEmail;
+  isExpanded: boolean;
+  openEmailId: string | null;
+  archiveMailboxId: string | null;
+  onToggle: () => void;
+  onOpenEmail: (emailId: string) => void;
+}
+
+function ThreadRow({
+  thread,
+  isExpanded,
+  openEmailId,
+  archiveMailboxId,
+  onToggle,
+  onOpenEmail,
+}: ThreadRowProps) {
+  const { moveEmail, deleteEmail } = useEmailMutations();
+  const setUndoToast = useSetAtom(undoToastAtom);
+  const setSnoozeEmailId = useSetAtom(snoozeEmailIdAtom);
+  const [hovering, setHovering] = useState(false);
+
+  const isMultiMessage = thread.messages.length > 1;
+  const isSingleOpen = !isMultiMessage && openEmailId === thread.latestMessage.id;
+  const anyOpen = thread.messages.some((m) => m.id === openEmailId);
+
+  const displayParticipants = thread.participants.slice(0, 3);
+  const dateLabel = new Date(thread.latestDate).toLocaleDateString([], {
+    month: 'short',
+    day: 'numeric',
+    year: new Date(thread.latestDate).getFullYear() !== new Date().getFullYear() ? '2-digit' : undefined,
+  });
+
+  const handleClick = () => {
+    if (isMultiMessage) {
+      onToggle();
+    } else {
+      onOpenEmail(thread.latestMessage.id);
+    }
+  };
+
+  const handleArchive = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!archiveMailboxId) return;
+    // Archive the latest (representative) message
+    moveEmail.mutate({ emailId: thread.latestMessage.id, toMailboxId: archiveMailboxId });
+    setUndoToast({
+      id: `thread-archive-${thread.threadId}-${Date.now()}`,
+      message: `Thread archived`,
+      onUndo: () => {},
+    });
+  };
+
+  const handleSnooze = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSnoozeEmailId(thread.latestMessage.id);
+  };
+
+  return (
+    <>
+      {/* Thread header row */}
+      <div
+        onClick={handleClick}
+        onMouseEnter={() => setHovering(true)}
+        onMouseLeave={() => setHovering(false)}
+        className={`
+          relative flex items-start gap-3 px-4 py-3 cursor-pointer border-b
+          transition-colors select-none
+          ${anyOpen ? 'bg-accent' : 'hover:bg-muted/50'}
+          ${thread.hasUnread ? 'font-medium' : ''}
+        `}
+      >
+        {/* Unread indicator dot */}
+        <div className="mt-2 flex-shrink-0">
+          <div className={`w-2 h-2 rounded-full ${thread.hasUnread ? 'bg-primary' : 'bg-transparent'}`} />
+        </div>
+
+        {/* Participant initial circles (up to 3, overlapping) */}
+        <div className="flex-shrink-0 flex items-center mt-0.5" style={{ width: displayParticipants.length > 1 ? `${20 + (displayParticipants.length - 1) * 14}px` : '20px' }}>
+          {displayParticipants.map((p, idx) => {
+            const label = p.name || p.email;
+            const hue = avatarHue(p.email);
+            return (
+              <div
+                key={p.email}
+                title={label}
+                className="w-5 h-5 rounded-full flex items-center justify-center text-[9px] font-bold ring-2 ring-background flex-shrink-0"
+                style={{
+                  backgroundColor: `hsl(${hue}, 55%, 65%)`,
+                  color: `hsl(${hue}, 55%, 20%)`,
+                  marginLeft: idx === 0 ? 0 : '-6px',
+                  zIndex: displayParticipants.length - idx,
+                  position: 'relative',
+                }}
+              >
+                {getInitials(label)}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Thread info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className={`text-sm truncate ${thread.hasUnread ? 'font-semibold' : 'font-medium'}`}>
+              {thread.subject || '(no subject)'}
+            </span>
+            <div className="flex items-center gap-1.5 flex-shrink-0">
+              {/* Message count badge for multi-message threads */}
+              {thread.messages.length > 1 && (
+                <span className="inline-flex items-center justify-center min-w-[1.125rem] h-[1.125rem] px-1 rounded-full bg-muted text-muted-foreground text-[10px] font-medium tabular-nums">
+                  {thread.messages.length}
+                </span>
+              )}
+              <span className="text-xs text-muted-foreground">{dateLabel}</span>
+            </div>
+          </div>
+          <div className="text-xs text-muted-foreground truncate mt-0.5">
+            {thread.snippet}
+          </div>
+        </div>
+
+        {/* Expand/collapse chevron for multi-message threads */}
+        {isMultiMessage && (
+          <div className="mt-1 flex-shrink-0 text-muted-foreground text-xs select-none">
+            {isExpanded ? '▲' : '▼'}
+          </div>
+        )}
+
+        {/* Hover quick-actions */}
+        {hovering && (
+          <div
+            className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-0.5 bg-background/90 backdrop-blur-sm rounded shadow-sm border px-1"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button
+              onClick={handleSnooze}
+              className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+              title="Snooze"
+            >
+              🔔
+            </button>
+            {archiveMailboxId && (
+              <button
+                onClick={handleArchive}
+                disabled={moveEmail.isPending}
+                className="p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
+                title="Archive thread"
+              >
+                📦
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Expanded sub-rows for each message in the thread */}
+      {isExpanded && isMultiMessage && thread.messages.map((msg) => {
+        const msgOpen = openEmailId === msg.id;
+        const msgRead = msg.keywords?.['$seen'] ?? false;
+        const sender = formatSender(msg);
+        const msgDate = formatDate(msg.receivedAt ?? '');
+        return (
+          <div
+            key={msg.id}
+            onClick={() => onOpenEmail(msg.id)}
+            className={`
+              flex items-start gap-3 pl-10 pr-4 py-2 cursor-pointer border-b
+              transition-colors select-none
+              ${msgOpen ? 'bg-accent' : 'hover:bg-muted/40'}
+              ${!msgRead ? 'font-medium' : ''}
+            `}
+          >
+            {/* Unread dot */}
+            <div className="mt-1.5 flex-shrink-0">
+              <div className={`w-1.5 h-1.5 rounded-full ${!msgRead ? 'bg-primary' : 'bg-transparent'}`} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-baseline justify-between gap-2">
+                <span className={`text-xs truncate ${!msgRead ? 'font-semibold' : 'text-muted-foreground'}`}>
+                  {sender}
+                </span>
+                <span className="text-[11px] text-muted-foreground flex-shrink-0">{msgDate}</span>
+              </div>
+              <div className="text-[11px] text-muted-foreground truncate mt-0.5">
+                {msg.preview ?? ''}
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </>
   );
 }
 
@@ -557,6 +789,8 @@ export function EmailList({ mailboxId }: EmailListProps) {
   const [openEmailId, setOpenEmailId] = useAtom(openEmailIdAtom);
   const [selectedIds, setSelectedIds] = useAtom(selectedEmailIdsAtom);
   const [accountId] = useAtom(activeAccountIdAtom);
+  const threadingEnabled = useAtomValue(threadingEnabledAtom);
+  const [expandedThreads, setExpandedThreads] = useAtom(expandedThreadsAtom);
   const { data, isLoading, isError } = useEmails(mailboxId);
   const { data: mailboxes = [] } = useMailboxes(accountId);
 
@@ -582,6 +816,9 @@ export function EmailList({ mailboxId }: EmailListProps) {
     return subjCount;
   }, [emails]);
 
+  /** Memoized threads computation — only recalculates when emails change */
+  const threads = useMemo(() => groupIntoThreads(emails), [emails]);
+
   const getThreadCount = (email: JmapEmail): number => {
     const key = normalizeSubject(email.subject);
     const subjectCount = key ? (threadCountMap[key] ?? 1) : 1;
@@ -600,15 +837,26 @@ export function EmailList({ mailboxId }: EmailListProps) {
     });
   };
 
+  const toggleThread = (threadId: string) => {
+    setExpandedThreads((prev) => {
+      const next = new Set(prev);
+      if (next.has(threadId)) next.delete(threadId);
+      else next.add(threadId);
+      return next;
+    });
+  };
+
   const clearSelection = () => setSelectedIds(new Set());
   const selectAll = () => setSelectedIds(new Set(emails.map((e) => e.id)));
+
+  const showThreaded = threadingEnabled && threads.length > 0;
 
   return (
     <div className="h-full flex flex-col">
       {/* Search + Sort bar */}
       <SearchBar />
 
-      {/* List header: master checkbox + count + bulk actions / empty folder */}
+      {/* List header: master checkbox + count + bulk actions / thread toggle / empty folder */}
       {!isLoading && !isError && (
         <ListHeader
           selectedIds={selectedIds}
@@ -646,7 +894,25 @@ export function EmailList({ mailboxId }: EmailListProps) {
           <span className="text-4xl">📭</span>
           <span className="text-sm">No emails found</span>
         </div>
+      ) : showThreaded ? (
+        /* ── Threaded view ── */
+        <div className="flex-1 min-h-0">
+          <VList className="h-full">
+            {threads.map((thread) => (
+              <ThreadRow
+                key={thread.threadId}
+                thread={thread}
+                isExpanded={expandedThreads.has(thread.threadId)}
+                openEmailId={openEmailId}
+                archiveMailboxId={archiveMailboxId}
+                onToggle={() => toggleThread(thread.threadId)}
+                onOpenEmail={(emailId) => setOpenEmailId(emailId)}
+              />
+            ))}
+          </VList>
+        </div>
       ) : (
+        /* ── Flat view ── */
         <div className="flex-1 min-h-0">
           <VList className="h-full">
             {emails.map((email) => (

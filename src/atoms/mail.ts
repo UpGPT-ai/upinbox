@@ -220,3 +220,11 @@ export const snoozeEmailIdAtom = atom<string | null>(null);
 
 // Current email list cursor (for j/k keyboard nav)
 export const emailCursorAtom = atom<number>(0);
+
+// Sprint 2-4 atoms
+export const threadingEnabledAtom = atomWithStorage<boolean>('upinbox:threading', true);
+export const expandedThreadsAtom = atom<Set<string>>(new Set<string>());
+export const followUpEmailIdAtom = atom<string | null>(null);
+export const showSubscriptionsAtom = atom<boolean>(false);
+export const showHealthScoreAtom = atom<boolean>(false);
+export const showPulseAtom = atom<boolean>(false);

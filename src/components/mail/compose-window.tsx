@@ -11,6 +11,8 @@
  * - Discard with confirmation
  * - Undo/Redo via editor history
  * - Minimize / expand / close
+ * - AI draft generation via DraftGeneratorPanel
+ * - Auto-append default signature on open
  */
 
 import { useState, useRef, useCallback, useEffect } from 'react';
@@ -19,6 +21,7 @@ import { composeDraftAtom, activeAccountIdAtom } from '@/atoms/mail';
 import { useSendEmail } from '@/hooks/use-emails';
 import { RichEditor, htmlToPlainText } from './rich-editor';
 import { SendLaterPicker } from '@/components/mail/send-later-picker';
+import { DraftGeneratorPanel } from '@/components/ai/draft-generator-panel';
 
 const UNDO_SECONDS = 5;
 
@@ -45,6 +48,8 @@ export function ComposeWindow() {
   const [countdown, setCountdown] = useState(UNDO_SECONDS);
   const [errorMsg, setErrorMsg] = useState('');
   const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const [showDraftAi, setShowDraftAi] = useState(false);
+  const [signatureInserted, setSignatureInserted] = useState(false);
 
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const sendTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -61,12 +66,43 @@ export function ComposeWindow() {
     setShowCc(false);
     setShowBcc(false);
     setShowDiscardConfirm(false);
+    setShowDraftAi(false);
+    setSignatureInserted(false);
   }, [setDraft]);
 
   useEffect(() => {
     setSendState('idle');
     setCountdown(UNDO_SECONDS);
+    // Reset signature flag whenever a new compose session starts
+    setSignatureInserted(false);
   }, [draft.mode]);
+
+  // Auto-append default signature when compose window opens (once per session)
+  useEffect(() => {
+    if (!isOpen || signatureInserted || !accountId) return;
+
+    const fetchAndAppendSignature = async () => {
+      try {
+        const res = await fetch(`/api/upinbox/signatures/default?accountId=${accountId}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const sigHtml: string | undefined = data?.html ?? data?.body ?? data?.signature;
+        if (!sigHtml) return;
+        setDraft((prev) => ({
+          ...prev,
+          body: prev.body
+            ? `${prev.body}<br><br>${sigHtml}`
+            : `<br><br>${sigHtml}`,
+        }));
+      } catch {
+        // Signature fetch is best-effort; silently ignore errors
+      } finally {
+        setSignatureInserted(true);
+      }
+    };
+
+    fetchAndAppendSignature();
+  }, [isOpen, signatureInserted, accountId, setDraft]);
 
   if (!isOpen) return null;
 
@@ -178,6 +214,13 @@ export function ComposeWindow() {
   const handleDiscard = () => {
     const hasContent = draft.body.replace(/<[^>]+>/g, '').trim() || draft.to.length || draft.subject;
     if (hasContent) { setShowDiscardConfirm(true); } else { close(); }
+  };
+
+  // ── AI draft accept ────────────────────────────────────────────────────────
+
+  const handleDraftAccept = (generatedHtml: string) => {
+    updateField('body', generatedHtml);
+    setShowDraftAi(false);
   };
 
   // ── Size classes ───────────────────────────────────────────────────────────
@@ -294,6 +337,15 @@ export function ComposeWindow() {
                     className="px-5 py-1.5 text-sm font-semibold rounded-full bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
                     Send
                   </button>
+                  {/* AI draft generator trigger */}
+                  <button
+                    type="button"
+                    onClick={() => setShowDraftAi(true)}
+                    title="Generate AI draft"
+                    className="w-7 h-7 flex items-center justify-center rounded hover:bg-gray-200 text-gray-500 hover:text-purple-600 transition-colors text-base"
+                  >
+                    ✨
+                  </button>
                   <div className="relative">
                     <button
                       onClick={() => setShowSendLater(v => !v)}
@@ -375,6 +427,16 @@ export function ComposeWindow() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* AI Draft Generator overlay */}
+      {showDraftAi && (
+        <DraftGeneratorPanel
+          accountId={accountId ?? ''}
+          draft={draft}
+          onAccept={handleDraftAccept}
+          onClose={() => setShowDraftAi(false)}
+        />
       )}
     </>
   );

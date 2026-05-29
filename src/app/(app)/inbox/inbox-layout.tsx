@@ -29,6 +29,8 @@ import {
   undoDurationMsAtom,
   openEmailIdAtom,
   emailCursorAtom,
+  showSubscriptionsAtom,
+  showHealthScoreAtom,
 } from '@/atoms/mail';
 import { useAccounts } from '@/hooks/use-accounts';
 import { useKeyboardShortcuts } from '@/hooks/use-keyboard-shortcuts';
@@ -44,6 +46,8 @@ import { ConnectAccountWizard } from '@/components/ai/connect-account-wizard';
 import { ComposeWindow } from '@/components/mail/compose-window';
 import { CommandPalette } from '@/components/mail/command-palette';
 import { UndoToast } from '@/components/mail/undo-toast';
+import { HealthScore } from '@/components/analytics/health-score';
+import { SubscriptionsManager } from '@/components/mail/subscriptions-manager';
 import type { FeedType } from '@/components/screener/feed-tabs';
 
 function EmptyState() {
@@ -195,6 +199,8 @@ export function InboxLayout() {
   const [undoDurationMs] = useAtom(undoDurationMsAtom);
   const [, setOpenEmailId] = useAtom(openEmailIdAtom);
   const [emailCursor, setEmailCursor] = useAtom(emailCursorAtom);
+  const [showSubscriptions, setShowSubscriptions] = useAtom(showSubscriptionsAtom);
+  const [showHealthScore, setShowHealthScore] = useAtom(showHealthScoreAtom);
 
   const hasAccounts = accounts.length > 0;
 
@@ -288,6 +294,24 @@ export function InboxLayout() {
 
             <div className="flex-1" />
 
+            {/* Health score button */}
+            <ToolbarButton
+              onClick={() => setShowHealthScore((v) => !v)}
+              title="Inbox health score"
+              active={showHealthScore}
+            >
+              <span className="text-sm leading-none">📊</span>
+            </ToolbarButton>
+
+            {/* Subscriptions button */}
+            <ToolbarButton
+              onClick={() => setShowSubscriptions((v) => !v)}
+              title="Manage subscriptions"
+              active={showSubscriptions}
+            >
+              <span className="text-sm leading-none">📰</span>
+            </ToolbarButton>
+
             {/* Cmd-K command palette shortcut pill */}
             <button
               onClick={() => setCommandPaletteOpen(true)}
@@ -375,6 +399,54 @@ export function InboxLayout() {
           </div>
         )}
       </div>
+
+      {/* Right-side slide-in panel: Health Score */}
+      {showHealthScore && (
+        <div className="fixed top-0 right-0 h-full w-96 z-40 bg-background border-l shadow-xl flex flex-col">
+          <div className="h-11 border-b flex items-center justify-between px-4 flex-shrink-0">
+            <span className="font-semibold text-sm flex items-center gap-2">
+              <span>📊</span>
+              <span>Inbox Health</span>
+            </span>
+            <button
+              onClick={() => setShowHealthScore(false)}
+              className="p-1.5 rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              title="Close"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <HealthScore accountId={activeAccountId ?? ''} />
+          </div>
+        </div>
+      )}
+
+      {/* Right-side slide-in panel: Subscriptions Manager */}
+      {showSubscriptions && (
+        <div className={`fixed top-0 right-0 h-full w-96 z-40 bg-background border-l shadow-xl flex flex-col ${showHealthScore ? 'right-96' : 'right-0'}`}>
+          <div className="h-11 border-b flex items-center justify-between px-4 flex-shrink-0">
+            <span className="font-semibold text-sm flex items-center gap-2">
+              <span>📰</span>
+              <span>Subscriptions</span>
+            </span>
+            <button
+              onClick={() => setShowSubscriptions(false)}
+              className="p-1.5 rounded text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+              title="Close"
+            >
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 6L6 18M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
+          <div className="flex-1 overflow-y-auto">
+            <SubscriptionsManager accountId={activeAccountId ?? ''} />
+          </div>
+        </div>
+      )}
 
       {/* Connect wizard modal */}
       {showConnectWizard && <ConnectAccountWizard />}

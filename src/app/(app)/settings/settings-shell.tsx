@@ -3,17 +3,20 @@
 /**
  * Settings shell — tabbed settings pages.
  *
- * Tabs: General | AI Config | Accounts | Screener Rules | Billing | MCP Tokens
+ * Tabs: General | AI & Privacy | Accounts | Screener Rules | Billing | MCP Tokens | Signatures | AI & Draft
  */
 
 import { useState } from 'react';
 import { useAtom } from 'jotai';
 import { undoDurationMsAtom } from '@/atoms/mail';
 import { AiSetupPanel } from '@/components/ai/ai-setup-panel';
+import { ByokPanel } from '@/components/ai/byok-panel';
+import { DraftProfilePanel } from '@/components/ai/draft-profile-panel';
+import { SignatureManager } from '@/components/mail/signature-manager';
 import { BillingPanel } from './billing-panel';
 import { McpTokensPanel } from './mcp-tokens-panel';
 
-type Tab = 'general' | 'ai' | 'accounts' | 'screener' | 'billing' | 'mcp';
+type Tab = 'general' | 'ai' | 'accounts' | 'screener' | 'billing' | 'mcp' | 'signatures' | 'ai-draft';
 
 const UNDO_OPTIONS: { label: string; value: number }[] = [
   { label: '5s',  value: 5000 },
@@ -75,6 +78,8 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
   { id: 'screener', label: 'Screener Rules', icon: '🔀' },
   { id: 'billing', label: 'Billing', icon: '💳' },
   { id: 'mcp', label: 'MCP Tokens', icon: '🔌' },
+  { id: 'signatures', label: 'Signatures', icon: '✍️' },
+  { id: 'ai-draft', label: 'AI & Draft', icon: '✨' },
 ];
 
 export function SettingsShell() {
@@ -144,6 +149,15 @@ export function SettingsShell() {
         )}
         {activeTab === 'billing' && <BillingPanel />}
         {activeTab === 'mcp' && <McpTokensPanel />}
+        {activeTab === 'signatures' && <SignatureManager />}
+        {activeTab === 'ai-draft' && (
+          <div className="space-y-0">
+            <ByokPanel />
+            <div className="border-t pt-8 mt-8">
+              <DraftProfilePanel />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -12,16 +12,21 @@
  * - Delete, flag/unflag
  * - Archive button (moves to archive mailbox)
  * - Snooze button with SnoozeSelector dropdown
+ * - Smart reply chips (subject-aware quick replies)
+ * - AI summarize button (✨) with amber summary panel
+ * - Follow-up button with FollowUpSelector dropdown
  */
 
 import { useEffect, useCallback, useState } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
-import { openEmailIdAtom, activeAccountIdAtom, composeDraftAtom } from '@/atoms/mail';
+import { openEmailIdAtom, activeAccountIdAtom, composeDraftAtom, byokApiKeyAtom, byokProviderAtom } from '@/atoms/mail';
 import { useEmail, useEmailMutations } from '@/hooks/use-emails';
 import { useAccounts } from '@/hooks/use-accounts';
 import { useLabels, useApplyLabel, useEmailLabels, type Label } from '@/hooks/use-labels';
 import { useMailboxes } from '@/hooks/use-mailboxes';
 import { SnoozeSelector } from '@/components/mail/snooze-selector';
+import { SmartReplyChips } from '@/components/mail/smart-reply-chips';
+import { FollowUpSelector } from '@/components/mail/follow-up-selector';
 import type { JmapEmail } from '@/lib/mail/types';
 import type { ComposeDraft } from '@/atoms/mail';
 
@@ -291,13 +296,18 @@ export function EmailDetail() {
   const [emailId, setOpenEmailId] = useAtom(openEmailIdAtom);
   const accountId = useAtomValue(activeAccountIdAtom);
   const [, setComposeDraft] = useAtom(composeDraftAtom);
+  const byokApiKey = useAtomValue(byokApiKeyAtom);
+  const byokProvider = useAtomValue(byokProviderAtom);
   const { data: email, isLoading, isError } = useEmail(emailId);
   const { deleteEmail, markRead, snoozeEmail, moveEmail } = useEmailMutations();
   const { data: accounts = [] } = useAccounts();
   const { data: mailboxes = [] } = useMailboxes(accountId);
   const [showLabelMenu, setShowLabelMenu] = useState(false);
   const [showSnooze, setShowSnooze] = useState(false);
+  const [showFollowUp, setShowFollowUp] = useState(false);
   const [trackerCount, setTrackerCount] = useState(0);
+  const [summary, setSummary] = useState<string | null>(null);
+  const [summarizing, setSummarizing] = useState(false);
 
   const identityEmail = accounts.find((a) => a.id === accountId)?.email_address;
 
@@ -305,9 +315,12 @@ export function EmailDetail() {
   const emailUid = email?.id ?? null;
   const { data: emailLabels = [] } = useEmailLabels(accountId, emailUid);
 
-  // Reset tracker count when email changes
+  // Reset tracker count, summary, and follow-up state when email changes
   useEffect(() => {
     setTrackerCount(0);
+    setSummary(null);
+    setSummarizing(false);
+    setShowFollowUp(false);
   }, [emailId]);
 
   // Mark as read when opened (if unread)
@@ -355,6 +368,50 @@ export function EmailDetail() {
     // Use browser alert as lightweight toast if no toast library is wired up
     console.info(`Snoozed until ${label}`);
   }, [emailId, snoozeEmail]);
+
+  const handleSmartReplySelect = useCallback((text: string) => {
+    if (!email) return;
+    const draft = buildReplyDraft(email, 'reply', identityEmail);
+    // Prepend the selected chip text before the quoted body
+    setComposeDraft({ ...draft, body: text + draft.body });
+  }, [email, identityEmail, setComposeDraft]);
+
+  const handleSummarize = useCallback(async () => {
+    if (!email || summarizing) return;
+    const body = extractPlainText(email);
+    if (!body || body.length < 100) return;
+
+    setSummarizing(true);
+    setSummary(null);
+    try {
+      const res = await fetch('/api/upinbox/ai/draft', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'summarize',
+          emailId: email.id,
+          subject: email.subject ?? '',
+          body,
+          byokApiKey: byokApiKey || undefined,
+          byokProvider: byokProvider || undefined,
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err?.error ?? `HTTP ${res.status}`);
+      }
+      const data = await res.json();
+      setSummary(data.summary ?? data.draft ?? data.text ?? 'No summary returned.');
+    } catch (err) {
+      setSummary(`Could not summarize: ${err instanceof Error ? err.message : 'Unknown error'}`);
+    } finally {
+      setSummarizing(false);
+    }
+  }, [email, summarizing, byokApiKey, byokProvider]);
+
+  // Determine if body is substantial enough to summarize (>100 chars plain text)
+  const bodyText = email ? extractPlainText(email) : '';
+  const isBodySubstantial = bodyText.length >= 100;
 
   if (!emailId) {
     return (
@@ -434,6 +491,20 @@ export function EmailDetail() {
               <span className="hidden sm:inline text-xs">Fwd</span>
             </button>
             <div className="w-px h-4 bg-border mx-1" />
+            {/* Summarize button — only shown when body is substantial */}
+            {isBodySubstantial && (
+              <button
+                onClick={handleSummarize}
+                disabled={summarizing}
+                className="px-2 py-1 rounded hover:bg-muted transition-colors text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Summarize with AI"
+              >
+                <span>✨</span>
+                <span className="hidden sm:inline text-xs">
+                  {summarizing ? 'Summarizing…' : 'Summarize'}
+                </span>
+              </button>
+            )}
             {/* Archive button */}
             <button
               onClick={handleArchive}
@@ -459,6 +530,25 @@ export function EmailDetail() {
                   accountId={accountId}
                   onSnooze={handleSnooze}
                   onClose={() => setShowSnooze(false)}
+                />
+              )}
+            </div>
+            {/* Follow-up button */}
+            <div className="relative">
+              <button
+                onClick={() => setShowFollowUp((v) => !v)}
+                className="px-2 py-1 rounded hover:bg-muted transition-colors text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+                title="Set follow-up reminder"
+              >
+                <span>🔔</span>
+                <span className="hidden sm:inline text-xs">Follow-up</span>
+              </button>
+              {showFollowUp && accountId && email && (
+                <FollowUpSelector
+                  emailId={email.id}
+                  accountId={accountId}
+                  threadSubject={email.subject ?? undefined}
+                  onClose={() => setShowFollowUp(false)}
                 />
               )}
             </div>
@@ -491,6 +581,27 @@ export function EmailDetail() {
             </button>
           </div>
         </div>
+
+        {/* Smart reply chips — between action buttons and From/To rows */}
+        <SmartReplyChips
+          subject={email.subject}
+          onSelect={handleSmartReplySelect}
+        />
+
+        {/* AI summary panel */}
+        {summary !== null && (
+          <div className="relative rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700 px-3 py-2 text-sm text-amber-900 dark:text-amber-200">
+            <button
+              onClick={() => setSummary(null)}
+              className="absolute top-1.5 right-2 text-amber-500 hover:text-amber-700 dark:hover:text-amber-300 text-xs leading-none"
+              title="Dismiss summary"
+              aria-label="Dismiss summary"
+            >
+              ✕
+            </button>
+            <p className="pr-5 leading-relaxed">{summary}</p>
+          </div>
+        )}
 
         {/* Label chips */}
         {emailLabels.length > 0 && (

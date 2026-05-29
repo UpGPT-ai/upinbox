@@ -7,18 +7,19 @@
  * Middle: mailbox list for active account (role-ordered, junk/trash at bottom).
  *         Drag-and-drop reordering via @dnd-kit — dynamically imported (ssr:false)
  *         so that the browser-only DnD library is never loaded during SSR.
- * Bottom: compose button + settings link.
+ * Bottom: saved searches subsection (fetched on mount from /api/upinbox/saved-searches).
  */
 
 import { useState, useRef, useEffect } from 'react';
 import dynamic from 'next/dynamic';
-import { useAtom } from 'jotai';
+import { useAtom, useSetAtom } from 'jotai';
 import {
   activeAccountIdAtom,
   activeMailboxIdAtom,
   sidebarCollapsedAtom,
   showConnectWizardAtom,
   unifiedInboxAtom,
+  searchFiltersAtom,
 } from '@/atoms/mail';
 import { useAccounts } from '@/hooks/use-accounts';
 import { useMailboxes } from '@/hooks/use-mailboxes';
@@ -43,6 +44,17 @@ const ROLE_ICONS: Record<string, string> = {
   spam:     '🚫',
   junk:     '🚫',
 };
+
+// ─── Saved search shape (mirrors API response) ────────────────────────────────
+
+interface SavedSearch {
+  id: string;
+  name: string;
+  query: string;
+  sort_order: 'newest' | 'oldest' | 'unread';
+  created_at: string;
+  updated_at: string;
+}
 
 // ─── Static mailbox item (SSR/loading fallback) ───────────────────────────────
 
@@ -318,6 +330,31 @@ export function MailSidebar() {
   const [unified, setUnified] = useAtom(unifiedInboxAtom);
   const { data: accounts = [], isLoading } = useAccounts();
 
+  // ── Saved searches ──────────────────────────────────────────────────────────
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
+  const setSearchFilters = useSetAtom(searchFiltersAtom);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/upinbox/saved-searches')
+      .then((res) => res.ok ? res.json() : Promise.reject(res.status))
+      .then((json: { savedSearches: SavedSearch[] }) => {
+        if (!cancelled) setSavedSearches(json.savedSearches ?? []);
+      })
+      .catch(() => {
+        // Silently ignore — saved searches are non-critical
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  const applySavedSearch = (search: SavedSearch) => {
+    setSearchFilters((prev) => ({
+      ...prev,
+      query: search.query,
+    }));
+  };
+  // ───────────────────────────────────────────────────────────────────────────
+
   if (collapsed) {
     return (
       <CollapsedSidebar
@@ -348,6 +385,27 @@ export function MailSidebar() {
       <div className="flex-1 overflow-y-auto py-2">
         {activeAccountId && (
           <AccountSection accountId={activeAccountId} />
+        )}
+
+        {savedSearches.length > 0 && (
+          <div className="mt-3 px-2">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-1 mb-1">
+              Saved Searches
+            </p>
+            <div className="space-y-0.5">
+              {savedSearches.map((search) => (
+                <button
+                  key={search.id}
+                  onClick={() => applySavedSearch(search)}
+                  title={search.query}
+                  className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm transition-colors text-left text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                >
+                  <span className="text-sm leading-none w-4 text-center flex-shrink-0">🔍</span>
+                  <span className="flex-1 truncate">{search.name}</span>
+                </button>
+              ))}
+            </div>
+          </div>
         )}
       </div>
     </div>
