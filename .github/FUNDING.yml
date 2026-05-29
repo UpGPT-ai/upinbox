@@ -1,0 +1,10 @@
+# Enables GitHub Sponsors and custom funding links on the repo.
+# Shown in the "Sponsor" button at the top of the repository page.
+
+# GitHub Sponsors username/org
+github: [UpGPT-ai]
+
+# Custom funding URLs (sponsor page + paid subscription page)
+custom:
+  - https://upgpt.ai/sponsor
+  - https://upgpt.ai/account/subscribe
