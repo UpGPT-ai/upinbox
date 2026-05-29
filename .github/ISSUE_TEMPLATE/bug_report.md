@@ -4,26 +4,26 @@ about: Something isn't working
 labels: bug
 ---
 
-**Describe the bug**
-A clear description of what's happening.
+## What happened?
 
-**To reproduce**
-Steps to reproduce the behavior.
+<!-- Describe the bug. -->
 
-**Expected behavior**
-What you expected to happen.
+## What did you expect?
 
-**Environment**
-- Deployment: [ ] Hosted (upinbox.ai)  [ ] Self-hosted Docker  [ ] Local dev
-- Mail provider: [ ] Gmail  [ ] Outlook  [ ] Fastmail (JMAP)  [ ] Other IMAP
-- AI provider: [ ] BYOK  [ ] UpLink local  [ ] Intelligence API  [ ] None
-- Browser: 
+<!-- Describe expected behavior. -->
+
+## Reproduction steps
+
+1. ...
+2. ...
+3. ...
+
+## Environment
+
+- UpInbox version: [hosted at mail.upinbox.ai or self-hosted commit hash]
+- Browser/Client: 
 - OS: 
 
-**Screenshots**
-If applicable.
+## Logs / screenshots
 
-**Logs**
-```
-Paste any relevant logs here (remove any email addresses or personal info first)
-```
+<!-- If applicable. -->

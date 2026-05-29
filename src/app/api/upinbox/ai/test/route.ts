@@ -67,8 +67,8 @@ async function testGemini(key: string, model: string): Promise<void> {
 }
 
 export async function POST(request: NextRequest): Promise<NextResponse> {
-  const key = getRateLimitFromRequest(request, 'ai:test');
-  const limit = checkRateLimit(key, { windowMs: 3600000, maxRequests: 10, identifier: 'ai:test' });
+  const rateLimitKey = getRateLimitFromRequest(request, 'ai:test');
+  const limit = checkRateLimit(rateLimitKey, { windowMs: 3600000, maxRequests: 10, identifier: 'ai:test' });
   if (!limit.allowed) {
     return NextResponse.json(
       { ok: false, error: 'Rate limit exceeded', retryAfter: Math.ceil((limit.retryAfterMs ?? 0) / 1000) },

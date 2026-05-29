@@ -1,24 +1,19 @@
 ---
 name: Feature request
-about: Suggest an idea for UpInbox
+about: Suggest an idea
 labels: enhancement
 ---
 
-**What problem does this solve?**
-Describe the problem you're facing.
+## What problem does this solve?
 
-**Proposed solution**
-Describe what you'd like to happen.
+<!-- Explain the user need. -->
 
-**Which component does this affect?**
-- [ ] Mail provider adapter (JMAP/IMAP)
-- [ ] Encryption / ZK layer
-- [ ] USX protocol
-- [ ] AI / intelligence routing
-- [ ] MCP server
-- [ ] UI / UX
-- [ ] Self-hosting / Docker
-- [ ] Documentation
+## Proposed solution
 
-**Alternatives considered**
-Any other approaches you've thought about.
+<!-- What should UpInbox do? -->
+
+## Alternatives considered
+
+## Additional context
+
+<!-- Links, mockups, etc. -->
