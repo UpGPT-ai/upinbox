@@ -3,17 +3,73 @@
 /**
  * Settings shell — tabbed settings pages.
  *
- * Tabs: AI Config | Accounts | Screener Rules | Billing | MCP Tokens
+ * Tabs: General | AI Config | Accounts | Screener Rules | Billing | MCP Tokens
  */
 
 import { useState } from 'react';
+import { useAtom } from 'jotai';
+import { undoDurationMsAtom } from '@/atoms/mail';
 import { AiSetupPanel } from '@/components/ai/ai-setup-panel';
 import { BillingPanel } from './billing-panel';
 import { McpTokensPanel } from './mcp-tokens-panel';
 
-type Tab = 'ai' | 'accounts' | 'screener' | 'billing' | 'mcp';
+type Tab = 'general' | 'ai' | 'accounts' | 'screener' | 'billing' | 'mcp';
+
+const UNDO_OPTIONS: { label: string; value: number }[] = [
+  { label: '5s',  value: 5000 },
+  { label: '10s', value: 10000 },
+  { label: '15s', value: 15000 },
+  { label: '30s', value: 30000 },
+  { label: '1 min', value: 60000 },
+];
+
+function GeneralPanel() {
+  const [undoDurationMs, setUndoDurationMs] = useAtom(undoDurationMsAtom);
+
+  return (
+    <div className="space-y-8">
+      <div>
+        <h2 className="text-lg font-semibold">General</h2>
+        <p className="text-sm text-muted-foreground mt-1">Preferences that apply across all your accounts.</p>
+      </div>
+
+      {/* Undo duration */}
+      <div className="space-y-3">
+        <div>
+          <h3 className="text-sm font-medium">Undo duration</h3>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            How long you have to undo an archive or delete before it becomes permanent.
+          </p>
+        </div>
+        <div className="flex items-center gap-1 p-1 bg-muted rounded-lg w-fit">
+          {UNDO_OPTIONS.map((opt) => (
+            <button
+              key={opt.value}
+              onClick={() => setUndoDurationMs(opt.value)}
+              className={`
+                px-3 py-1.5 rounded-md text-sm font-medium transition-colors
+                ${undoDurationMs === opt.value
+                  ? 'bg-background text-foreground shadow-sm'
+                  : 'text-muted-foreground hover:text-foreground'
+                }
+              `}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Currently: <span className="font-medium text-foreground">
+            {UNDO_OPTIONS.find(o => o.value === undoDurationMs)?.label ?? `${undoDurationMs / 1000}s`}
+          </span>
+        </p>
+      </div>
+    </div>
+  );
+}
 
 const TABS: { id: Tab; label: string; icon: string }[] = [
+  { id: 'general', label: 'General', icon: '⚙️' },
   { id: 'ai', label: 'AI & Privacy', icon: '🤖' },
   { id: 'accounts', label: 'Accounts', icon: '📧' },
   { id: 'screener', label: 'Screener Rules', icon: '🔀' },
@@ -22,7 +78,7 @@ const TABS: { id: Tab; label: string; icon: string }[] = [
 ];
 
 export function SettingsShell() {
-  const [activeTab, setActiveTab] = useState<Tab>('ai');
+  const [activeTab, setActiveTab] = useState<Tab>('general');
 
   return (
     <div className="flex h-screen overflow-hidden bg-background">
@@ -56,6 +112,7 @@ export function SettingsShell() {
 
       {/* Content */}
       <div className="flex-1 overflow-y-auto p-8 max-w-2xl">
+        {activeTab === 'general' && <GeneralPanel />}
         {activeTab === 'ai' && <AiSetupPanel />}
         {activeTab === 'accounts' && (
           <div className="space-y-4">

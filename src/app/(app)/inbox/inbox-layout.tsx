@@ -26,6 +26,7 @@ import {
   toolbarCollapsedAtom,
   commandPaletteOpenAtom,
   undoToastAtom,
+  undoDurationMsAtom,
   openEmailIdAtom,
   emailCursorAtom,
 } from '@/atoms/mail';
@@ -191,6 +192,7 @@ export function InboxLayout() {
 
   const [commandPaletteOpen, setCommandPaletteOpen] = useAtom(commandPaletteOpenAtom);
   const [undoToast, setUndoToast] = useAtom(undoToastAtom);
+  const [undoDurationMs] = useAtom(undoDurationMsAtom);
   const [, setOpenEmailId] = useAtom(openEmailIdAtom);
   const [emailCursor, setEmailCursor] = useAtom(emailCursorAtom);
 
@@ -397,6 +399,7 @@ export function InboxLayout() {
           message={undoToast.message}
           onUndo={() => { undoToast.onUndo(); setUndoToast(null); }}
           onDismiss={() => setUndoToast(null)}
+          durationMs={undoDurationMs}
         />
       )}
     </div>

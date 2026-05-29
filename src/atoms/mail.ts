@@ -209,6 +209,12 @@ export interface UndoToastState {
 }
 export const undoToastAtom = atom<UndoToastState | null>(null);
 
+/** How long the undo toast stays on screen before auto-committing (ms, persisted) */
+export const undoDurationMsAtom = atomWithStorage<number>(
+  'upinbox:undoDurationMs',
+  8000
+);
+
 // Snooze panel open state (which email is being snoozed)
 export const snoozeEmailIdAtom = atom<string | null>(null);
 
