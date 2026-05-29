@@ -94,6 +94,35 @@ export async function decryptCredentials(enc: string): Promise<ProviderCredentia
 }
 
 /**
+ * Encrypt an arbitrary string (e.g. OAuth token) using the same AES-256-GCM key.
+ */
+export async function encryptString(plaintext: string): Promise<string> {
+  const key = await getWrappingKey();
+  const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
+  const cipherBuf = await crypto.subtle.encrypt(
+    { name: ALG, iv },
+    key,
+    new TextEncoder().encode(plaintext),
+  );
+  const result = new Uint8Array(IV_BYTES + cipherBuf.byteLength);
+  result.set(iv, 0);
+  result.set(new Uint8Array(cipherBuf), IV_BYTES);
+  return Buffer.from(result).toString('base64');
+}
+
+/**
+ * Decrypt an arbitrary string encrypted with encryptString.
+ */
+export async function decryptString(enc: string): Promise<string> {
+  const key = await getWrappingKey();
+  const buf = new Uint8Array(Buffer.from(enc, 'base64'));
+  const iv = buf.slice(0, IV_BYTES);
+  const ciphertext = buf.slice(IV_BYTES);
+  const plainBuf = await crypto.subtle.decrypt({ name: ALG, iv }, key, ciphertext);
+  return new TextDecoder().decode(plainBuf);
+}
+
+/**
  * Rotate credentials to a new key.
  * Call this during PLATFORM_ENCRYPTION_KEY rotation to re-encrypt existing blobs.
  */

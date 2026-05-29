@@ -29,6 +29,7 @@ import { SmartReplyChips } from '@/components/mail/smart-reply-chips';
 import { FollowUpSelector } from '@/components/mail/follow-up-selector';
 import type { JmapEmail } from '@/lib/mail/types';
 import type { ComposeDraft } from '@/atoms/mail';
+import { RsvpBanner } from '@/components/mail/rsvp-banner';
 
 function formatFullDate(dateStr: string): string {
   return new Date(dateStr).toLocaleString([], {
@@ -645,6 +646,11 @@ export function EmailDetail() {
           )}
         </div>
       </div>
+
+      {/* RSVP banner — shown when the email contains a calendar invite (METHOD:REQUEST) */}
+      {accountId && (
+        <RsvpBanner email={email} accountId={accountId} />
+      )}
 
       {/* Body */}
       <div className="flex-1 overflow-y-auto">

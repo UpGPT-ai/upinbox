@@ -6,6 +6,13 @@ import ICAL from 'ical.js';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+interface CalendarAttendeeRow {
+  email: string;
+  name?: string;
+  role: string;
+  rsvpStatus: string;
+}
+
 interface CalendarEventRow {
   user_id: string;
   account_id: string;
@@ -22,6 +29,9 @@ interface CalendarEventRow {
   status: string;
   recurrence_rule: string | null;
   raw_ics: string;
+  attendees: CalendarAttendeeRow[];
+  source: string;
+  video_url: string | null;
 }
 
 function extractIcsFromBodyValues(bodyValues: Record<string, { value: string }>): string | null {
@@ -29,6 +39,23 @@ function extractIcsFromBodyValues(bodyValues: Record<string, { value: string }>)
     if (part.value?.includes('BEGIN:VCALENDAR')) return part.value;
   }
   return null;
+}
+
+function extractVideoUrl(text: string | null): string | null {
+  if (!text) return null;
+  const match = text.match(
+    /https:\/\/(?:meet\.google\.com|zoom\.us\/j|teams\.microsoft\.com\/l\/meetup-join)[^\s<>"')]+/i,
+  );
+  return match ? match[0] : null;
+}
+
+function parsePartstat(raw: string | null): string {
+  switch ((raw ?? '').toUpperCase()) {
+    case 'ACCEPTED':  return 'accepted';
+    case 'DECLINED':  return 'declined';
+    case 'TENTATIVE': return 'tentative';
+    default:          return 'needs-action';
+  }
 }
 
 function parseIcsToEvents(
@@ -40,6 +67,9 @@ function parseIcsToEvents(
   try {
     const parsed = ICAL.parse(icsString);
     const comp = new ICAL.Component(parsed);
+    const method = (comp.getFirstPropertyValue('method') as string | null ?? 'REQUEST').toUpperCase();
+    if (method === 'REPLY' || method === 'CANCEL') return [];
+
     const vevents = comp.getAllSubcomponents('vevent');
     const rows: CalendarEventRow[] = [];
 
@@ -62,11 +92,27 @@ function parseIcsToEvents(
           organizerName = Array.isArray(cn) ? cn[0] ?? null : cn ?? null;
         }
 
+        // Attendees
+        const attendeeProps = vevent.getAllProperties('attendee');
+        const attendees: CalendarAttendeeRow[] = attendeeProps.map((prop) => {
+          const emailRaw = prop.getFirstValue() as string;
+          const email = (emailRaw ?? '').replace(/^mailto:/i, '');
+          const name = prop.getParameter('cn') as string | null ?? undefined;
+          const role = (prop.getParameter('role') as string | null ?? 'REQ-PARTICIPANT').toUpperCase();
+          const partstat = prop.getParameter('partstat') as string | null;
+          return { email, name: name ?? undefined, role, rsvpStatus: parsePartstat(partstat) };
+        });
+
         const statusRaw = vevent.getFirstPropertyValue('status') as string | null;
         const status = statusRaw ? statusRaw.toLowerCase() : 'confirmed';
 
         const rruleProp = vevent.getFirstProperty('rrule');
         const rrule = rruleProp ? rruleProp.getFirstValue()?.toString() ?? null : null;
+
+        const description = event.description || null;
+        const location = event.location || null;
+        const xConf = vevent.getFirstPropertyValue('x-google-conference') as string | null;
+        const videoUrl = xConf ?? extractVideoUrl(description) ?? extractVideoUrl(location);
 
         rows.push({
           user_id: userId,
@@ -74,8 +120,8 @@ function parseIcsToEvents(
           source_email_id: sourceEmailId,
           uid,
           summary: event.summary || '(No title)',
-          description: event.description || null,
-          location: event.location || null,
+          description,
+          location,
           start_at: dtstart.toJSDate().toISOString(),
           end_at: dtend.toJSDate().toISOString(),
           all_day: allDay,
@@ -84,6 +130,9 @@ function parseIcsToEvents(
           status: ['confirmed', 'tentative', 'cancelled'].includes(status) ? status : 'confirmed',
           recurrence_rule: rrule,
           raw_ics: icsString,
+          attendees,
+          source: 'ics_email',
+          video_url: videoUrl,
         });
       } catch {
         // skip malformed VEVENT
@@ -111,7 +160,7 @@ export async function POST() {
   if (!accounts?.length) return NextResponse.json({ synced: 0, accounts: 0 });
 
   const since = new Date();
-  since.setDate(since.getDate() - 180); // last 6 months
+  since.setDate(since.getDate() - 180);
 
   let totalSynced = 0;
 
@@ -123,14 +172,12 @@ export async function POST() {
         const inbox = mailboxes.find((m: any) => m.role === 'inbox' || m.name?.toLowerCase() === 'inbox');
         if (!inbox) return;
 
-        // Search for calendar-related emails
         const { ids } = await provider.queryEmails({
           mailboxId: inbox.id,
           limit: 100,
           since,
           sortDir: 'desc',
         });
-
         if (!ids.length) return;
 
         const emails = await provider.getEmails(ids);

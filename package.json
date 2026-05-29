@@ -54,6 +54,7 @@
     "react": "^18.3.0",
     "react-dom": "^18.3.0",
     "react-hotkeys-hook": "^4.5.0",
+    "rrule": "^2.8.1",
     "tailwind-merge": "^3.6.0",
     "virtua": "^0.33.0",
     "web-push": "^3.6.7",
