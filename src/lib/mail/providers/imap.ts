@@ -602,10 +602,14 @@ function mapImapMessageToJmap(msg: any, mailboxPath: string): JmapEmail {
 
   function mapAddress(addr: unknown): JmapEmailAddress[] {
     if (!Array.isArray(addr)) return [];
-    return addr.map((a: Record<string, string>) => ({
-      name: a.name ?? undefined,
-      email: `${a.mailbox ?? ''}@${a.host ?? ''}`,
-    }));
+    return addr
+      .map((a: Record<string, string>) => {
+        const mailbox = a.mailbox ?? '';
+        const host = a.host ?? '';
+        const email = mailbox && host ? `${mailbox}@${host}` : (mailbox || host || '');
+        return { name: a.name ?? undefined, email };
+      })
+      .filter((a) => a.email);
   }
 
   const bodyParts = msg.bodyParts as Map<string, Buffer> | undefined;
