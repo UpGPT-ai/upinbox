@@ -112,7 +112,7 @@ function Toolbar({ editor }: { editor: Editor | null }) {
   const COLORS = ['#000000','#ef4444','#f97316','#eab308','#22c55e','#3b82f6','#8b5cf6','#ec4899','#6b7280'];
 
   return (
-    <div className="flex items-center gap-0.5 px-2 py-1.5 border-b bg-gray-50 flex-wrap relative">
+    <div className="flex items-center gap-0.5 px-2 py-1.5 border-t bg-gray-50 flex-wrap relative">
       {/* Text formatting */}
       <TBtn onClick={() => editor.chain().focus().toggleBold().run()}
         active={editor.isActive('bold')} title="Bold (Ctrl+B)">
@@ -277,10 +277,10 @@ export function RichEditor({ value, onChange, placeholder, autoFocus, className 
 
   return (
     <div className={`flex flex-col ${className ?? ''}`}>
-      <Toolbar editor={editor} />
       <div className="flex-1 overflow-y-auto">
         <EditorContent editor={editor} />
       </div>
+      <Toolbar editor={editor} />
     </div>
   );
 }

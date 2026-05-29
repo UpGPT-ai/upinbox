@@ -90,6 +90,7 @@ export function useEmailMutations() {
 
   const invalidateEmailList = () => {
     queryClient.invalidateQueries({ queryKey: ['upinbox', 'emails'] });
+    queryClient.invalidateQueries({ queryKey: ['upinbox-unified'] });
   };
 
   /** Bulk delete (trash) multiple emails in parallel */

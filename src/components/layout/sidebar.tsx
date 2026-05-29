@@ -407,6 +407,21 @@ export function MailSidebar() {
             </div>
           </div>
         )}
+
+        <div className="mt-3 px-2">
+          <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-1 mb-1">
+            Calendar
+          </p>
+          <div className="space-y-0.5">
+            <a
+              href="/calendar"
+              className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-sm transition-colors text-left text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+            >
+              <span className="text-sm leading-none w-4 text-center flex-shrink-0">📅</span>
+              <span className="flex-1 truncate">Calendar</span>
+            </a>
+          </div>
+        </div>
       </div>
     </div>
   );

@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
       .from('accounts')
       .select('*')
       .eq('user_id', user.id)
-      .eq('is_active', true);
+      .eq('sync_enabled', true);
 
     if (!accounts?.length) return NextResponse.json({ emails: [], total: 0, accounts: [] });
 

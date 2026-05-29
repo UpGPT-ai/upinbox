@@ -15,7 +15,7 @@
  * - Auto-append default signature on open
  */
 
-import { useState, useRef, useCallback, useEffect } from 'react';
+import { useState, useRef, useCallback, useEffect, memo } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
 import { composeDraftAtom, activeAccountIdAtom } from '@/atoms/mail';
 import { useSendEmail } from '@/hooks/use-emails';
@@ -24,6 +24,57 @@ import { SendLaterPicker } from '@/components/mail/send-later-picker';
 import { DraftGeneratorPanel } from '@/components/ai/draft-generator-panel';
 
 const UNDO_SECONDS = 5;
+
+/** Recipient input that buffers raw text while typing and only parses on blur/Enter/comma. */
+const RecipientInput = memo(function RecipientInput({
+  label,
+  value,
+  onChange,
+  placeholder,
+  autoFocus,
+}: {
+  label: string;
+  value: string[];
+  onChange: (addresses: string[]) => void;
+  placeholder: string;
+  autoFocus?: boolean;
+}) {
+  const [raw, setRaw] = useState(value.join(', '));
+  const [focused, setFocused] = useState(false);
+
+  // Sync displayed value when parent changes while not focused (e.g. reply-all pre-fills)
+  useEffect(() => {
+    if (!focused) setRaw(value.join(', '));
+  }, [value, focused]);
+
+  const parse = (text: string) =>
+    text.split(/[,;\n]+/).map((s) => s.trim()).filter((s) => s.includes('@'));
+
+  const commit = (text: string) => {
+    const parsed = parse(text);
+    onChange(parsed);
+    setRaw(parsed.join(', '));
+  };
+
+  return (
+    <input
+      type="text"
+      value={raw}
+      autoFocus={autoFocus}
+      placeholder={placeholder}
+      className="flex-1 text-sm outline-none text-gray-800 placeholder:text-gray-400"
+      onFocus={() => setFocused(true)}
+      onBlur={(e) => { setFocused(false); commit(e.target.value); }}
+      onChange={(e) => setRaw(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === ',' || e.key === ';' || e.key === 'Enter') {
+          e.preventDefault();
+          commit(raw + (e.key === 'Enter' ? '' : ','));
+        }
+      }}
+    />
+  );
+});
 
 type WindowState = 'open' | 'minimized' | 'fullscreen';
 
@@ -262,14 +313,16 @@ export function ComposeWindow() {
             {/* To */}
             <div className="flex items-center border-b px-3 py-1.5 gap-2">
               <span className="text-xs text-gray-500 w-10 flex-shrink-0">To</span>
-              <input type="text" value={draft.to.join(', ')}
-                onChange={(e) => updateField('to', parseAddresses(e.target.value))}
-                onBlur={(e) => updateField('to', parseAddresses(e.target.value))}
-                placeholder="Recipients" autoFocus={draft.mode === 'new'}
-                className="flex-1 text-sm outline-none text-gray-800 placeholder:text-gray-400" />
+              <RecipientInput
+                label="To"
+                value={draft.to}
+                onChange={(v) => updateField('to', v)}
+                placeholder="Recipients"
+                autoFocus={draft.mode === 'new'}
+              />
               <div className="flex gap-2 text-xs text-gray-400">
-                {!showCc && <button onClick={() => setShowCc(true)} className="hover:text-gray-600">Cc</button>}
-                {!showBcc && <button onClick={() => setShowBcc(true)} className="hover:text-gray-600">Bcc</button>}
+                {!showCc && <button tabIndex={-1} onClick={() => setShowCc(true)} className="hover:text-gray-600">Cc</button>}
+                {!showBcc && <button tabIndex={-1} onClick={() => setShowBcc(true)} className="hover:text-gray-600">Bcc</button>}
               </div>
             </div>
 
@@ -277,11 +330,13 @@ export function ComposeWindow() {
             {showCc && (
               <div className="flex items-center border-b px-3 py-1.5 gap-2">
                 <span className="text-xs text-gray-500 w-10 flex-shrink-0">Cc</span>
-                <input type="text" value={draft.cc.join(', ')}
-                  onChange={(e) => updateField('cc', parseAddresses(e.target.value))}
-                  onBlur={(e) => updateField('cc', parseAddresses(e.target.value))}
-                  placeholder="Carbon copy" autoFocus
-                  className="flex-1 text-sm outline-none text-gray-800 placeholder:text-gray-400" />
+                <RecipientInput
+                  label="Cc"
+                  value={draft.cc}
+                  onChange={(v) => updateField('cc', v)}
+                  placeholder="Carbon copy"
+                  autoFocus
+                />
               </div>
             )}
 
@@ -289,11 +344,13 @@ export function ComposeWindow() {
             {showBcc && (
               <div className="flex items-center border-b px-3 py-1.5 gap-2">
                 <span className="text-xs text-gray-500 w-10 flex-shrink-0">Bcc</span>
-                <input type="text" value={draft.bcc.join(', ')}
-                  onChange={(e) => updateField('bcc', parseAddresses(e.target.value))}
-                  onBlur={(e) => updateField('bcc', parseAddresses(e.target.value))}
-                  placeholder="Blind carbon copy" autoFocus
-                  className="flex-1 text-sm outline-none text-gray-800 placeholder:text-gray-400" />
+                <RecipientInput
+                  label="Bcc"
+                  value={draft.bcc}
+                  onChange={(v) => updateField('bcc', v)}
+                  placeholder="Blind carbon copy"
+                  autoFocus
+                />
               </div>
             )}
 

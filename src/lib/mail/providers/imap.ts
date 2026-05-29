@@ -320,13 +320,16 @@ export class ImapProvider implements MailProvider {
     const creds = this.credentials;
 
     // Build MIME message using nodemailer's compile step (no send)
+    const smtpHost0 = loopbackHost(creds.smtpHost ?? creds.imapHost);
+    const isLoopback0 = smtpHost0 === '::1' || smtpHost0 === '127.0.0.1' || smtpHost0 === 'localhost';
     const transport = createTransport({
-      host: loopbackHost(creds.smtpHost ?? creds.imapHost),
+      host: smtpHost0,
       port: creds.smtpPort,
       secure: creds.smtpTls,
       auth: creds.type === 'oauth_imap'
         ? { type: 'OAuth2', user: this.emailAddress, accessToken: creds.accessToken }
         : { user: creds.username, pass: creds.password },
+      tls: isLoopback0 ? { rejectUnauthorized: false } : undefined,
     });
 
     const bodyText = Object.values(draft.bodyValues ?? {})[0]?.value ?? '';
@@ -372,13 +375,16 @@ export class ImapProvider implements MailProvider {
     const [email] = await this.getEmails([submission.emailId]);
     if (!email) throw new Error(`Draft not found: ${submission.emailId}`);
 
+    const smtpHost1 = loopbackHost(creds.smtpHost ?? creds.imapHost);
+    const isLoopback1 = smtpHost1 === '::1' || smtpHost1 === '127.0.0.1' || smtpHost1 === 'localhost';
     const transport = createTransport({
-      host: loopbackHost(creds.smtpHost ?? creds.imapHost),
+      host: smtpHost1,
       port: creds.smtpPort,
       secure: creds.smtpTls,
       auth: creds.type === 'oauth_imap'
         ? { type: 'OAuth2', user: this.emailAddress, accessToken: creds.accessToken }
         : { user: creds.username, pass: creds.password },
+      tls: isLoopback1 ? { rejectUnauthorized: false } : undefined,
     });
 
     const bodyText = Object.values(email.bodyValues ?? {})[0]?.value ?? '';
@@ -411,13 +417,16 @@ export class ImapProvider implements MailProvider {
     const { createTransport } = await import('nodemailer');
     const creds = this.credentials;
 
+    const smtpHost2 = loopbackHost(creds.smtpHost ?? creds.imapHost);
+    const isLoopback2 = smtpHost2 === '::1' || smtpHost2 === '127.0.0.1' || smtpHost2 === 'localhost';
     const transport = createTransport({
-      host: loopbackHost(creds.smtpHost ?? creds.imapHost),
+      host: smtpHost2,
       port: creds.smtpPort,
-      secure: creds.smtpTls ?? true,
+      secure: creds.smtpTls ?? false,
       auth: creds.type === 'oauth_imap'
         ? { type: 'OAuth2', user: this.emailAddress, accessToken: creds.accessToken }
         : { user: (creds as import('@/lib/mail/types').ImapCredentials).username, pass: (creds as import('@/lib/mail/types').ImapCredentials).password },
+      tls: isLoopback2 ? { rejectUnauthorized: false } : undefined,
     });
 
     const mailOpts: Record<string, unknown> = {
